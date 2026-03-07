@@ -119,7 +119,7 @@ const MAX_HEADER_STORE = 1000;
 
 // ── Initialization ──
 
-async function init(): Promise<void> {
+const ready = (async function init(): Promise<void> {
   settings = await loadSettings();
   daemon = new DaemonSocket(settings.daemonUrl);
   daemon.connect();
@@ -128,9 +128,7 @@ async function init(): Promise<void> {
     settings = newSettings;
     daemon.updateUrl(settings.daemonUrl);
   });
-}
-
-init();
+})();
 
 // ── First install ──
 
@@ -154,7 +152,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     headerStore.set(details.url, details.requestHeaders);
   },
   { urls: ["<all_urls>"] },
-  ["requestHeaders"]
+  ["requestHeaders", "extraHeaders"]
 );
 
 chrome.webRequest.onBeforeRedirect.addListener(
@@ -207,6 +205,7 @@ function toDaemonCookie(c: chrome.cookies.Cookie): DaemonCookie {
 
 chrome.downloads.onCreated.addListener(
   async (downloadItem: chrome.downloads.DownloadItem) => {
+    await ready;
     if (!settings.interceptDownloads) return;
 
     const url = downloadItem.finalUrl || downloadItem.url;
@@ -247,7 +246,7 @@ chrome.runtime.onMessage.addListener(
     sender: chrome.runtime.MessageSender,
     sendResponse: (response: unknown) => void
   ) => {
-    handleMessage(message, sender).then(sendResponse).catch((err) => {
+    ready.then(() => handleMessage(message, sender)).then(sendResponse).catch((err) => {
       console.error("[WarpDL] message handler error:", err);
       sendResponse({ error: String(err) });
     });
@@ -289,6 +288,11 @@ async function handleMessage(
       };
       const sent = daemon.send(msg);
       return { success: sent };
+    }
+
+    default: {
+      const _exhaustive: never = message;
+      return _exhaustive;
     }
   }
 }
