@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff4444;
+      flex-shrink: 0;
+    }
+    .status-dot.connected { background: #44ff44; }
+    .status-text {
+      font-size: 11px;
+      color: #999;
+      margin-left: auto;
+    }
+    .field {
+      margin-bottom: 12px;
+    }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .field input {
+      width: 100%;
+      padding: 8px 10px;
+      background: #16213e;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 13px;
+      outline: none;
+    }
+    .field input:focus {
+      border-color: #5a5aff;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding: 8px 0;
+    }
+    .toggle-row label {
+      font-size: 13px;
+    }
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+    }
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .toggle .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #333;
+      border-radius: 22px;
+      transition: 0.2s;
+    }
+    .toggle .slider::before {
+      content: "";
+      position: absolute;
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: 0.2s;
+    }
+    .toggle input:checked + .slider { background: #5a5aff; }
+    .toggle input:checked + .slider::before { transform: translateX(18px); }
+    button {
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+      background: #5a5aff;
+      color: #fff;
+    }
+    button:hover { opacity: 0.85; }
+    .feedback {
+      text-align: center;
+      font-size: 11px;
+      margin-top: 8px;
+      min-height: 16px;
+      color: #44ff44;
+    }
+    .feedback.error { color: #ff4444; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>WarpDL</h1>
+    <div id="status-dot" class="status-dot"></div>
+    <span id="status-text" class="status-text">Disconnected</span>
+  </div>
+
+  <div class="field">
+    <label>Daemon Address</label>
+    <input type="text" id="daemon-url" placeholder="localhost:3850">
+  </div>
+
+  <div class="toggle-row">
+    <label>Intercept Downloads</label>
+    <div class="toggle">
+      <input type="checkbox" id="intercept-toggle" checked>
+      <span class="slider"></span>
+    </div>
+  </div>
+
+  <button id="btn-save">Save</button>
+
+  <div id="feedback" class="feedback"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
