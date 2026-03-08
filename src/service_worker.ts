@@ -229,7 +229,10 @@ chrome.downloads.onCreated.addListener(
     const storedHeaders = headerStore.get(url);
     if (storedHeaders) {
       for (const h of storedHeaders) {
-        if (h.value) {
+        // Skip Cookie header — cookies are sent via the cookies field.
+        // Sending both causes the daemon's http.Client to use the header
+        // Cookie instead of the jar cookies, leading to CookieMismatch errors.
+        if (h.value && h.name.toLowerCase() !== "cookie") {
           headers.push({ key: h.name, value: h.value });
         }
       }
