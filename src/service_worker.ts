@@ -219,6 +219,11 @@ chrome.downloads.onCreated.addListener(
     }
 
     const url = downloadItem.finalUrl || downloadItem.url;
+    if (!url || !/^https?:\/\//i.test(url)) {
+      console.log("[WarpDL] Skipping non-HTTP download:", url);
+      return;
+    }
+
     console.log("[WarpDL] Intercepted download:", url, "filename:", downloadItem.filename);
 
     chrome.downloads.cancel(downloadItem.id, () => {
