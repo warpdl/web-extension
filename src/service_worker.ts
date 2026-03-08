@@ -34,20 +34,24 @@ class DaemonSocket {
     }
 
     this.socket.onopen = () => {
-      console.log("[WarpDL] Connected to daemon");
+      console.log("[WarpDL] Connected to daemon at ws://" + this.url);
       this.reconnectDelay = 1000;
     };
 
-    this.socket.onclose = () => {
-      console.log("[WarpDL] Disconnected from daemon");
+    this.socket.onmessage = (event) => {
+      console.log("[WarpDL] Daemon response:", event.data);
+    };
+
+    this.socket.onclose = (event) => {
+      console.log("[WarpDL] Disconnected from daemon (code:", event.code, "reason:", event.reason, ")");
       this.socket = null;
       if (!this.intentionallyClosed) {
         this.scheduleReconnect();
       }
     };
 
-    this.socket.onerror = () => {
-      // onclose will fire after this, which handles reconnect
+    this.socket.onerror = (event) => {
+      console.error("[WarpDL] WebSocket error:", event);
     };
   }
 
@@ -65,10 +69,12 @@ class DaemonSocket {
 
   send(data: CapturedDownload): boolean {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      console.error("[WarpDL] Cannot send: not connected");
+      console.error("[WarpDL] Cannot send: not connected (readyState:", this.socket?.readyState, ")");
       return false;
     }
-    this.socket.send(JSON.stringify(data));
+    const payload = JSON.stringify(data);
+    console.log("[WarpDL] Sending to daemon:", payload);
+    this.socket.send(payload);
     return true;
   }
 
@@ -192,7 +198,8 @@ function toDaemonCookie(c: chrome.cookies.Cookie): DaemonCookie {
     Secure: c.secure,
   };
   if (c.expirationDate) {
-    cookie.Expires = new Date(c.expirationDate * 1000).toUTCString();
+    // Must be RFC3339/ISO8601 for Go's time.Time JSON unmarshaling
+    cookie.Expires = new Date(c.expirationDate * 1000).toISOString();
   }
   // Map chrome SameSite to Go's http.SameSite int
   if (c.sameSite === "lax") cookie.SameSite = 1;
@@ -206,9 +213,13 @@ function toDaemonCookie(c: chrome.cookies.Cookie): DaemonCookie {
 chrome.downloads.onCreated.addListener(
   async (downloadItem: chrome.downloads.DownloadItem) => {
     await ready;
-    if (!settings.interceptDownloads) return;
+    if (!settings.interceptDownloads) {
+      console.log("[WarpDL] Interception disabled, skipping:", downloadItem.url);
+      return;
+    }
 
     const url = downloadItem.finalUrl || downloadItem.url;
+    console.log("[WarpDL] Intercepted download:", url, "filename:", downloadItem.filename);
 
     chrome.downloads.cancel(downloadItem.id, () => {
       chrome.downloads.erase({ id: downloadItem.id });
