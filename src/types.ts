@@ -78,37 +78,6 @@ export interface ConnectionStatusResponse {
   connected: boolean;
 }
 
-// ── YouTube types ──
-
-export interface YouTubeFormat {
-  url?: string;
-  signatureCipher?: string;
-  mimeType: string;
-  qualityLabel?: string;
-  bitrate?: number;
-  contentLength?: string;
-  width?: number;
-  height?: number;
-  audioQuality?: string;
-}
-
-export interface YouTubeStreamingData {
-  formats?: YouTubeFormat[];
-  adaptiveFormats?: YouTubeFormat[];
-}
-
-export interface YouTubeVideoDetails {
-  videoId: string;
-  title: string;
-  lengthSeconds: string;
-  author: string;
-}
-
-export interface YouTubePlayerResponse {
-  videoDetails?: YouTubeVideoDetails;
-  streamingData?: YouTubeStreamingData;
-}
-
 // ── Video overlay (detect module) ──
 
 export interface OverlayOption {
@@ -118,21 +87,3 @@ export interface OverlayOption {
   fileName?: string;
   group?: string;
 }
-
-// ── YouTube main/isolated bridge ──
-
-export type YtExtractError =
-  | "no_player_response"
-  | "no_formats"
-  | "base_js_fetch_failed"
-  | "signature_extract_failed"
-  | "n_extract_failed"
-  | "decode_exception"
-  | "unknown";
-
-export type YtBridgeMessage =
-  | { source: "warpdl-yt-content"; type: "request-formats" }
-  | { source: "warpdl-yt-content"; type: "ping" }
-  | { source: "warpdl-yt-main"; type: "ready" }
-  | { source: "warpdl-yt-main"; type: "formats-ready"; options: OverlayOption[]; videoId: string; title: string }
-  | { source: "warpdl-yt-main"; type: "formats-error"; reason: YtExtractError; videoId: string | null };

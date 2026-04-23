@@ -23,12 +23,6 @@
     "content_scripts": [
         {
             "matches": ["*://*.youtube.com/*"],
-            "js": ["youtube_main_world.js"],
-            "world": "MAIN",
-            "run_at": "document_start"
-        },
-        {
-            "matches": ["*://*.youtube.com/*"],
             "js": ["youtube_content.js"],
             "run_at": "document_idle"
         },

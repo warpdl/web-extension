@@ -7,7 +7,6 @@ module.exports = {
       popup: path.resolve(__dirname, "..", "src", "popup.ts"),
       content_script: path.resolve(__dirname, "..", "src", "detect", "content_main.ts"),
       youtube_content: path.resolve(__dirname, "..", "src", "detect", "content_main.ts"),
-      youtube_main_world: path.resolve(__dirname, "..", "src", "detect", "detectors", "youtube", "main_world.ts"),
    },
    output: {
       path: path.join(__dirname, "../dist"),
