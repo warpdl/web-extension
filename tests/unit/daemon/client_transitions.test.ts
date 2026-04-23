@@ -127,6 +127,21 @@ describe("DaemonClient transitions", () => {
     expect(client.state).toBe("CONNECTING");
   });
 
+  it("wsFactory throwing transitions CONNECTING → RECONNECTING", () => {
+    const bus = new EventBus();
+    const log = new Logger({ bus, writer: () => {} });
+    const clock = new FakeClock();
+    const client = new DaemonClient({
+      bus, log, clock,
+      wsFactory: () => { throw new Error("socket construction failed"); },
+      disableHeartbeat: true,
+      disableBreaker: true,
+    });
+    client.setUrl("h:1");
+    client.start();
+    expect(client.state).toBe("RECONNECTING");
+  });
+
   it("double start() is idempotent", () => {
     const { client } = makeClient();
     client.start();
@@ -188,4 +203,23 @@ describe("DaemonClient transitions", () => {
     expect(r).toEqual({ ok: false, reason: "connection_lost" });
     expect(client.state).toBe("RECONNECTING");
   });
+
+  it("self-transition to non-IDLE state is a noop (duplicate onopen ignored)", () => {
+    const { client, lastSocket } = makeClient();
+    client.start();
+    lastSocket()!.simulateOpen();
+    expect(client.state).toBe("OPEN");
+    // Fire onopen again — triggers OPEN→OPEN self-transition which must be a noop.
+    lastSocket()!.simulateOpen();
+    expect(client.state).toBe("OPEN");
+  });
+
+  it("url getter returns the normalized URL after setUrl()", () => {
+    const { client } = makeClient();
+    expect(client.url).toBe("localhost:3850");
+    client.start();
+    client.setUrl("otherhost:9001");
+    expect(client.url).toBe("otherhost:9001");
+  });
+
 });

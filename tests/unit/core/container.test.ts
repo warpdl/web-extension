@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Container } from "../../../src/core/container";
 
 describe("Container skeleton", () => {
@@ -18,5 +18,17 @@ describe("Container skeleton", () => {
     await c.start();
     await c.start();      // must not throw
     expect(c.isStarted).toBe(true);
+  });
+
+  it("ready rejects and start() rethrows when initialization fails", async () => {
+    const boom = new Error("storage unavailable");
+    (globalThis as any).chrome.storage.sync.get = vi.fn(() => Promise.reject(boom));
+    const c = new Container();
+    let rejected: unknown;
+    c.ready.catch((e) => { rejected = e; });
+    await expect(c.start()).rejects.toThrow("storage unavailable");
+    await Promise.resolve();
+    expect(rejected).toBe(boom);
+    expect(c.isStarted).toBe(false);
   });
 });

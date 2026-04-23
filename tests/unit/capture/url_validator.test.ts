@@ -123,4 +123,28 @@ describe("validateDaemonUrl", () => {
   it("rejects multiple colons in IPv4-style input", () => {
     expect(validateDaemonUrl("a:b:3850")).toEqual({ ok: false, error: "invalid_host_chars" });
   });
+
+  it("rejects IPv6 bracket with invalid inner chars (non-hex)", () => {
+    // 'g' and 'z' are not valid hex characters
+    expect(validateDaemonUrl("[ggzz]:3850")).toEqual({ ok: false, error: "invalid_host_chars" });
+  });
+
+  it("rejects IPv6 bracket with empty inner content", () => {
+    // [] with no content between brackets
+    expect(validateDaemonUrl("[]:3850")).toEqual({ ok: false, error: "invalid_host_chars" });
+  });
+
+  it("rejects IPv6 bracket followed by non-colon separator", () => {
+    // Something like [::1]X3850 — has content after ] but not ':'
+    expect(validateDaemonUrl("[::1]X3850")).toEqual({ ok: false, error: "malformed" });
+  });
+
+  it("rejects IPv6 bracket with colon but no port digits", () => {
+    // [::1]: — colon present but no port number follows
+    expect(validateDaemonUrl("[::1]:")).toEqual({ ok: false, error: "missing_port" });
+  });
+
+  it("rejects IPv6 bracket with out-of-range port", () => {
+    expect(validateDaemonUrl("[::1]:99999")).toEqual({ ok: false, error: "port_out_of_range" });
+  });
 });

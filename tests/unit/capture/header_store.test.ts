@@ -133,4 +133,13 @@ describe("HeaderStore", () => {
     for (let i = 0; i < 100; i++) store.set(`x${i}`, mkHeaders(1));
     expect(Date.now() - start).toBeLessThan(50);
   });
+
+  it("startSweep() called twice is idempotent — second call is a noop", () => {
+    const store = new HeaderStore({ clock, ttlMs: 1000, sweepMs: 500 });
+    store.startSweep();
+    store.startSweep(); // second call must not register a second interval
+    store.set("u", mkHeaders(1));
+    clock.tick(1500);
+    expect(store.size()).toBe(0); // still swept exactly once per tick
+  });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { DaemonClient } from "../../../src/daemon/client";
 import { EventBus } from "../../../src/core/events";
 import { Logger } from "../../../src/core/logger";
@@ -75,6 +75,15 @@ describe("DaemonClient heartbeat", () => {
     ws.bufferedAmount = 0;
     clock.tick(20_000);   // second tick: drained
     expect(client.state).toBe("OPEN");
+  });
+
+  it("heartbeat send throwing transitions to RECONNECTING", () => {
+    const { client, lastSocket, clock } = makeClient();
+    client.start();
+    lastSocket()!.simulateOpen();
+    lastSocket()!.send = vi.fn(() => { throw new Error("socket closed"); }) as any;
+    clock.tick(20_000);
+    expect(client.state).toBe("RECONNECTING");
   });
 
   it("heartbeat disabled via option does nothing", () => {

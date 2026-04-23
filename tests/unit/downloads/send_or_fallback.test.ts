@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { sendOrFallback } from "../../../src/downloads/send_or_fallback";
+import { sendOrFallback, mapStateToReason } from "../../../src/downloads/send_or_fallback";
 import type { DaemonClient } from "../../../src/daemon/client";
 
 function mkClient(state: string, sendOk = true) {
@@ -50,5 +50,17 @@ describe("sendOrFallback", () => {
     };
     await sendOrFallback(client, { url: "u", headers: [], cookies: [] }, { onFallback });
     expect(calls).toEqual(["start", "end"]);
+  });
+});
+
+describe("mapStateToReason", () => {
+  it("maps every known state", () => {
+    expect(mapStateToReason("IDLE")).toBe("idle");
+    expect(mapStateToReason("CONNECTING")).toBe("connecting");
+    expect(mapStateToReason("RECONNECTING")).toBe("reconnecting");
+    expect(mapStateToReason("DISABLED")).toBe("disabled");
+  });
+  it("returns 'unknown' for unrecognized states", () => {
+    expect(mapStateToReason("WEIRD")).toBe("unknown");
   });
 });

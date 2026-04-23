@@ -48,4 +48,20 @@ describe("sanitizeFilename", () => {
   it("strips leading/trailing dots (Windows hostile)", () => {
     expect(sanitizeFilename(".hidden.mp4.")).toBe("hidden.mp4");
   });
+
+  it("truncates to MAX_LEN without extension preservation when name has no dot", () => {
+    const long = "a".repeat(300); // no extension
+    const out = sanitizeFilename(long);
+    expect(out.length).toBe(200);
+    expect(out).toBe("a".repeat(200));
+  });
+
+  it("truncates to MAX_LEN without extension preservation when extension is too long (>10 chars)", () => {
+    // Total length = 250 + 1 + 15 = 266 > 200; extension is 15 chars > 10 so no extension preserved
+    const longExt = "a".repeat(250) + "." + "b".repeat(15);
+    const out = sanitizeFilename(longExt);
+    expect(out.length).toBe(200);
+    // No extension appended — just a plain slice of the beginning
+    expect(out.endsWith("b".repeat(15))).toBe(false);
+  });
 });
