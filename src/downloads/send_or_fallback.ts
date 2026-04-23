@@ -25,7 +25,7 @@ export async function sendOrFallback(
   return { kind: "fallback", reason: r.reason };
 }
 
-function mapStateToReason(state: string): string {
+export function mapStateToReason(state: string): string {
   switch (state) {
     case "IDLE": return "idle";
     case "CONNECTING": return "connecting";

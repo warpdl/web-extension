@@ -18,8 +18,6 @@ export type IncomingMessage =
   | { type: "DOWNLOAD_VIDEO"; url: string; fileName?: string; pageUrl?: string }
   | { type: "GET_CONNECTION_STATUS" };
 
-type AnyMessage = { type: string; [key: string]: unknown };
-
 type Response =
   | VideoResponse
   | { connected: boolean; state: string }
@@ -36,20 +34,21 @@ export class MessageRouter {
     this.video = deps.video;
   }
 
-  async handle(msg: AnyMessage): Promise<Response> {
+  async handle(msg: IncomingMessage): Promise<Response> {
     try {
       switch (msg.type) {
         case "DOWNLOAD_VIDEO":
-          return await this.video.handle(msg as IncomingMessage & { type: "DOWNLOAD_VIDEO" });
+          return await this.video.handle(msg);
         case "GET_CONNECTION_STATUS":
           return { connected: this.daemon.state === "OPEN", state: this.daemon.state };
         default: {
-          this.log.warn("unknown_message_type", { type: msg.type });
+          const unknownMsg = msg as { type: string };
+          this.log.warn("unknown_message_type", { type: unknownMsg.type });
           return { error: "unknown_type" };
         }
       }
     } catch (e) {
-      this.log.error("handler_threw", { type: msg.type }, e);
+      this.log.error("handler_threw", { type: (msg as { type: string }).type }, e);
       return { error: "handler_threw" };
     }
   }

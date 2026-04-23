@@ -4,6 +4,7 @@ import type { DaemonClient } from "../daemon/client";
 import type { CapturedDownload, DaemonHeader, DaemonCookie } from "../types";
 import { toDaemonCookie } from "../capture/cookie_mapper";
 import { sanitizeFilename } from "../capture/sanitize_filename";
+import { mapStateToReason } from "./send_or_fallback";
 
 interface Deps {
   bus: EventBus;
@@ -37,7 +38,7 @@ export class VideoHandler {
 
   async handle(msg: VideoMsg): Promise<VideoResponse> {
     if (this.daemon.state !== "OPEN") {
-      return this.fallback(msg, `state_${this.daemon.state}`);
+      return this.fallback(msg, mapStateToReason(this.daemon.state));
     }
 
     const captured = await this.buildMessage(msg);
