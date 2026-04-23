@@ -41,8 +41,8 @@ describe("state transitions", () => {
     expect(isLegalTransition("IDLE", "OPEN")).toBe(false);
   });
 
-  it("disallows OPEN → CONNECTING (must go through RECONNECTING or IDLE)", () => {
-    expect(isLegalTransition("OPEN", "CONNECTING")).toBe(false);
+  it("allows OPEN → CONNECTING (setUrl change during open goes directly)", () => {
+    expect(isLegalTransition("OPEN", "CONNECTING")).toBe(true);
   });
 
   it("disallows self-transitions except IDLE → IDLE as stop idempotency", () => {
@@ -53,6 +53,18 @@ describe("state transitions", () => {
 
   it("disallows DISABLED → RECONNECTING directly (must resume to CONNECTING)", () => {
     expect(isLegalTransition("DISABLED", "RECONNECTING")).toBe(false);
+  });
+
+  it("allows CONNECTING → DISABLED (setUrl with invalid during connecting)", () => {
+    expect(isLegalTransition("CONNECTING", "DISABLED")).toBe(true);
+  });
+
+  it("allows OPEN → DISABLED (setUrl with invalid during open)", () => {
+    expect(isLegalTransition("OPEN", "DISABLED")).toBe(true);
+  });
+
+  it("allows IDLE → DISABLED (setUrl with invalid while idle)", () => {
+    expect(isLegalTransition("IDLE", "DISABLED")).toBe(true);
   });
 
   it("TRANSITIONS is a frozen map", () => {

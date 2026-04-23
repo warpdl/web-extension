@@ -58,27 +58,16 @@ export class DaemonClient {
     const v = validateDaemonUrl(raw);
     if (!v.ok) {
       this._url = raw;
-      // Force to DISABLED — teardown first, then force-set state bypassing
-      // the transition table (DISABLED is only reachable via breaker normally,
-      // but invalid URL is an immediate forced disable from any state).
       this.teardown();
-      this.forceState("DISABLED", `invalid_url:${v.error}`);
+      this.transition("DISABLED", `invalid_url:${v.error}`);
       return;
     }
     const normalized = `${v.host}:${v.port}`;
-    if (this._url === normalized && (this._state === "OPEN" || this._state === "CONNECTING")) {
-      return;   // no change
-    }
+    if (this._url === normalized && (this._state === "OPEN" || this._state === "CONNECTING")) return;
     this._url = normalized;
-    if (this._state === "IDLE") {
-      // Client hasn't been started yet — just store the URL, stay IDLE
-      return;
-    }
-    // Changing URL while running: teardown then reconnect.
-    // Force to IDLE first (bypassing table), then transition IDLE → CONNECTING.
+    if (this._state === "IDLE") return;   // stay IDLE until start()
     this.teardown();
     this.consecutiveFailures = 0;
-    this.forceState("IDLE");
     this.transition("CONNECTING");
   }
 
@@ -120,18 +109,6 @@ export class DaemonClient {
   }
 
   // ── Internals ───────────────────────────────────────────────
-
-  /** Force the state machine into a new state without the transition-table check.
-   *  Used only by setUrl() for cases that don't follow the normal state graph
-   *  (invalid URL → immediate DISABLED, URL change while running → reset to IDLE).
-   *  Emits the bus event so external observers stay in sync. */
-  private forceState(to: State, cause?: string): void {
-    const from = this._state;
-    this._state = to;
-    this.bus.emit("daemon:state", { from, to, cause });
-    this.log.info("state_force", { from, to, cause });
-    this.onEnter(to, cause);
-  }
 
   private transition(to: State, cause?: string): void {
     const from = this._state;
@@ -180,7 +157,10 @@ export class DaemonClient {
 
   private scheduleReconnect(cause?: string): void {
     this.clearSocketHandlers();
-    this.socket = null;
+    if (this.socket !== null) {
+      try { this.socket.close(); } catch { /* noop */ }
+      this.socket = null;
+    }
     if (cause === "onclose" || cause === "ws_construct_throw" || cause === "send_throw" || cause === "heartbeat_stalled") {
       this.consecutiveFailures++;
     }
