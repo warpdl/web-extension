@@ -27,8 +27,74 @@ describe("extractPlayerHash", () => {
   it("extracts hash from variant path", () => {
     expect(extractPlayerHash("/s/player/xyz567/player_ias.vflset/en_US/base.js")).toBe("xyz567");
   });
+  it("extracts hash from mobile plasma variant", () => {
+    expect(extractPlayerHash("/s/player/plaz123/player-plasma-ias-phone-en_US.vflset/base.js")).toBe("plaz123");
+  });
+  it("extracts hash from tv variant", () => {
+    expect(extractPlayerHash("/s/player/tv456/tv-player-ias.vflset/tv-player-ias.js")).toBe("tv456");
+  });
   it("returns null for unrelated URL", () => {
     expect(extractPlayerHash("https://www.youtube.com/other.js")).toBeNull();
+  });
+});
+
+describe("findBaseJsUrl — ytcfg strategies", () => {
+  afterEach(() => {
+    delete (window as any).ytcfg;
+  });
+
+  it("uses ytcfg.get('PLAYER_JS_URL') when present", () => {
+    (window as any).ytcfg = { get: (k: string) => k === "PLAYER_JS_URL" ? "/s/player/cfg1/player_ias.vflset/en_US/base.js" : undefined };
+    const url = findBaseJsUrl();
+    expect(url).toContain("/s/player/cfg1/");
+    expect(url).toContain("base.js");
+  });
+
+  it("uses ytcfg.data_.PLAYER_JS_URL fallback", () => {
+    (window as any).ytcfg = { data_: { PLAYER_JS_URL: "https://www.youtube.com/s/player/cfg2/player_ias.vflset/en_US/base.js" } };
+    expect(findBaseJsUrl()).toContain("/s/player/cfg2/");
+  });
+
+  it("prefers ytcfg.get over data_", () => {
+    (window as any).ytcfg = {
+      get: () => "/s/player/primary/player_ias.vflset/en_US/base.js",
+      data_: { PLAYER_JS_URL: "/s/player/secondary/player_ias.vflset/en_US/base.js" },
+    };
+    expect(findBaseJsUrl()).toContain("primary");
+  });
+
+  it("prefers ytcfg over <script> scan", () => {
+    (window as any).ytcfg = { get: () => "/s/player/fromcfg/player_ias.vflset/en_US/base.js" };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/s/player/fromscript/player_ias.vflset/en_US/base.js";
+    document.head.appendChild(s);
+    expect(findBaseJsUrl()).toContain("fromcfg");
+  });
+});
+
+describe("findBaseJsUrl — preload link fallback", () => {
+  it("finds base.js from <link rel=preload>", () => {
+    const l = document.createElement("link");
+    l.rel = "preload";
+    l.href = "https://www.youtube.com/s/player/preloaded/player_ias.vflset/en_US/base.js";
+    document.head.appendChild(l);
+    expect(findBaseJsUrl()).toContain("preloaded");
+  });
+});
+
+describe("findBaseJsUrl — base.js with query string", () => {
+  it("matches base.js URL with cache-bust query", () => {
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/s/player/q1/player_ias.vflset/en_US/base.js?cb=123";
+    document.head.appendChild(s);
+    expect(findBaseJsUrl()).toContain("q1");
+  });
+
+  it("matches mobile plasma variant", () => {
+    const s = document.createElement("script");
+    s.src = "https://m.youtube.com/s/player/mob1/player-plasma-ias-phone-en_US.vflset/base.js";
+    document.head.appendChild(s);
+    expect(findBaseJsUrl()).toContain("mob1");
   });
 });
 

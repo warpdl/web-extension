@@ -22,15 +22,35 @@ function postError(reason: YtExtractError, videoId: string | null): void {
   console.warn("[WarpDL YT]", reason);
 }
 
+/** Test-overridable retry settings. */
+export const __WAIT_CONFIG = {
+  attempts: 20,
+  intervalMs: 250,
+};
+
+async function waitFor<T>(fn: () => T | null | undefined): Promise<T | null> {
+  for (let i = 0; i < __WAIT_CONFIG.attempts; i++) {
+    const v = fn();
+    if (v) return v;
+    if (i < __WAIT_CONFIG.attempts - 1) {
+      await new Promise((r) => setTimeout(r, __WAIT_CONFIG.intervalMs));
+    }
+  }
+  return null;
+}
+
 async function handleRequestFormats(): Promise<void> {
-  const pr = getPlayerResponse();
+  const pr = await waitFor(() => {
+    const r = getPlayerResponse();
+    return r?.streamingData ? r : null;
+  });
   if (!pr?.streamingData) {
     postError("no_player_response", null);
     return;
   }
   const videoId = pr.videoDetails?.videoId ?? null;
 
-  const baseJsUrl = findBaseJsUrl();
+  const baseJsUrl = await waitFor(() => findBaseJsUrl());
   if (!baseJsUrl) {
     postError("base_js_fetch_failed", videoId);
     return;

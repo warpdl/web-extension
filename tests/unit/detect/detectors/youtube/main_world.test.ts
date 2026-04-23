@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { runMainWorld, __resetDecoderCache } from "../../../../../src/detect/detectors/youtube/main_world";
+import { runMainWorld, __resetDecoderCache, __WAIT_CONFIG } from "../../../../../src/detect/detectors/youtube/main_world";
 import * as formats from "../../../../../src/detect/detectors/youtube/formats";
 import * as signature from "../../../../../src/detect/detectors/youtube/signature";
 
@@ -11,8 +11,12 @@ beforeEach(() => {
   // Remove any lingering script tags from previous tests
   Array.from(document.head.querySelectorAll("script")).forEach((s) => s.remove());
   delete (window as any).ytInitialPlayerResponse;
+  delete (window as any).ytcfg;
   // Reset module-level decoder cache so mock spies are always exercised
   __resetDecoderCache();
+  // Disable retry polling in tests — fail fast
+  __WAIT_CONFIG.attempts = 1;
+  __WAIT_CONFIG.intervalMs = 0;
   (globalThis as any).chrome = {
     storage: {
       local: {

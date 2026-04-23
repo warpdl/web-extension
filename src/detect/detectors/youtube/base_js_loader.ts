@@ -7,16 +7,51 @@ export function __resetMemCache(): void {
 }
 
 export function extractPlayerHash(url: string): string | null {
-  const m = url.match(/\/s\/player\/([^/]+)\/player_ias\.vflset/);
+  const m = url.match(/\/s\/player\/([^/]+)\//);
   return m?.[1] ?? null;
 }
 
+function absolutize(url: string): string {
+  try {
+    return new URL(url, window.location.origin).toString();
+  } catch {
+    return url;
+  }
+}
+
+function looksLikeBaseJs(url: string): boolean {
+  // Match anything under /s/player/<hash>/ whose filename is base.js,
+  // with or without a query string. Covers every player variant
+  // (player_ias, player-plasma-ias-phone, tv-player-ias, etc).
+  return /\/s\/player\/[^/]+\/.+\/base\.js(\?|$)/.test(url);
+}
+
 export function findBaseJsUrl(): string | null {
+  // Strategy 1: ytcfg (present in main world after YouTube bootstraps).
+  try {
+    const w = window as unknown as {
+      ytcfg?: { get?: (k: string) => unknown; data_?: Record<string, unknown> };
+    };
+    const fromGet = typeof w.ytcfg?.get === "function" ? w.ytcfg.get("PLAYER_JS_URL") : undefined;
+    if (typeof fromGet === "string" && fromGet.length > 0) return absolutize(fromGet);
+    const fromData = w.ytcfg?.data_?.["PLAYER_JS_URL"];
+    if (typeof fromData === "string" && fromData.length > 0) return absolutize(fromData);
+  } catch { /* ignore */ }
+
+  // Strategy 2: <script src> scan.
   const scripts = document.querySelectorAll("script[src]");
   for (const node of Array.from(scripts)) {
     const src = (node as HTMLScriptElement).src;
-    if (src.includes("/s/player/") && src.endsWith("base.js")) return src;
+    if (looksLikeBaseJs(src)) return src;
   }
+
+  // Strategy 3: <link rel="preload"> scan (some YouTube variants preload the player).
+  const links = document.querySelectorAll('link[rel="preload"][href]');
+  for (const node of Array.from(links)) {
+    const href = (node as HTMLLinkElement).href;
+    if (looksLikeBaseJs(href)) return href;
+  }
+
   return null;
 }
 
