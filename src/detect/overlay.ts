@@ -17,12 +17,16 @@ export function mountOverlay(deps: {
     return { setOptions: () => {}, destroy: () => {} };
   }
 
-  if (getComputedStyle(parent).position === "static" || parent.style.position === "") {
+  const computedPos = getComputedStyle(parent).position;
+  if (computedPos !== "relative" && computedPos !== "absolute" && computedPos !== "fixed" && computedPos !== "sticky") {
     parent.style.position = "relative";
   }
 
   let currentOptions: OverlayOption[] = deps.options.slice();
   let dropdown: HTMLDivElement | null = null;
+  let isCompact = false;
+  const originalParent: HTMLElement = parent;
+  let resizeObserver: ResizeObserver | null = null;
 
   const btn = document.createElement("div");
   btn.setAttribute("data-warpdl-overlay-btn", "1");
@@ -43,12 +47,49 @@ export function mountOverlay(deps: {
     lineHeight: "1",
     userSelect: "none",
   } as CSSStyleDeclaration);
+
+  function renderBtnLabel(): void {
+    if (currentOptions.length === 0) {
+      btn.textContent = isCompact ? "⬇" : "⬇ Detecting…";
+    } else {
+      btn.textContent = isCompact ? "⬇" : "⬇ WarpDL ▾";
+    }
+  }
+
+  function evaluateCompact(): void {
+    const rect = deps.video.getBoundingClientRect();
+    const shouldBeCompact = rect.width < 200 || rect.height < 100;
+    if (shouldBeCompact !== isCompact) {
+      isCompact = shouldBeCompact;
+      renderBtnLabel();
+    }
+  }
+
+  function onFullscreenChange(): void {
+    const fs = document.fullscreenElement;
+    if (fs && !fs.contains(btn)) {
+      fs.appendChild(btn);
+      if (dropdown) fs.appendChild(dropdown);
+    } else if (!fs && btn.parentElement !== originalParent) {
+      originalParent.appendChild(btn);
+      if (dropdown) originalParent.appendChild(dropdown);
+    }
+  }
+
   renderBtnLabel();
   parent.appendChild(btn);
 
-  function renderBtnLabel(): void {
-    btn.textContent = currentOptions.length === 0 ? "⬇ Detecting…" : "⬇ WarpDL ▾";
+  evaluateCompact();
+  renderBtnLabel();
+
+  try {
+    resizeObserver = new ResizeObserver(() => evaluateCompact());
+    resizeObserver.observe(deps.video);
+  } catch {
+    // ResizeObserver unavailable — skip observation
   }
+
+  document.addEventListener("fullscreenchange", onFullscreenChange);
 
   function toggleDropdown(): void {
     if (dropdown) { closeDropdown(); return; }
@@ -124,7 +165,7 @@ export function mountOverlay(deps: {
       }
     }
 
-    parent!.appendChild(dropdown);
+    btn.parentElement!.appendChild(dropdown);
   }
 
   function closeDropdown(): void {
@@ -160,6 +201,8 @@ export function mountOverlay(deps: {
     destroy(): void {
       btn.removeEventListener("click", btnClick);
       document.removeEventListener("click", outsideClick, true);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      resizeObserver?.disconnect();
       closeDropdown();
       btn.remove();
     },

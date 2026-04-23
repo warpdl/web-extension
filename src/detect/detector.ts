@@ -9,8 +9,10 @@ export interface Detector {
 export abstract class BaseDetector implements Detector {
   protected handles = new Map<HTMLVideoElement, OverlayHandle>();
   private observer: MutationObserver | null = null;
+  private stopped = false;
 
   start(): void {
+    this.stopped = false;
     this.scan(document);
     this.observer = new MutationObserver((mutations) => this.onMutations(mutations));
     this.observer.observe(document.body, { childList: true, subtree: true });
@@ -18,6 +20,7 @@ export abstract class BaseDetector implements Detector {
   }
 
   stop(): void {
+    this.stopped = true;
     this.observer?.disconnect();
     this.observer = null;
     for (const h of this.handles.values()) h.destroy();
@@ -55,7 +58,7 @@ export abstract class BaseDetector implements Detector {
       if (!this.shouldHandle(video)) continue;
       const result = this.getOptions(video);
       const mount = (opts: OverlayOption[]) => {
-        if (this.handles.has(video)) return;
+        if (this.stopped || this.handles.has(video)) return;
         const handle = mountOverlay({
           video,
           options: opts,

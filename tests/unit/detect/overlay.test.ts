@@ -168,4 +168,58 @@ describe("mountOverlay", () => {
     const video = document.createElement("video");
     expect(() => mountOverlay({ video, options: [], onSelect: vi.fn() })).not.toThrow();
   });
+
+  it("uses compact label for small videos (<200px wide or <100px tall)", () => {
+    const video = mkVideo(100, 50);   // below threshold
+    mountOverlay({ video, options: [{ label: "720p", url: "u" }], onSelect: vi.fn() });
+    const btn = document.querySelector("[data-warpdl-overlay-btn]") as HTMLElement;
+    expect(btn.textContent).toBe("⬇");
+  });
+
+  it("uses full label for large videos", () => {
+    const video = mkVideo(800, 450);
+    mountOverlay({ video, options: [{ label: "720p", url: "u" }], onSelect: vi.fn() });
+    const btn = document.querySelector("[data-warpdl-overlay-btn]") as HTMLElement;
+    expect(btn.textContent).toContain("WarpDL");
+  });
+
+  it("re-parents overlay into fullscreen element on fullscreenchange", () => {
+    const video = mkVideo(800, 450);
+    mountOverlay({ video, options: [], onSelect: vi.fn() });
+    const btn = document.querySelector("[data-warpdl-overlay-btn]") as HTMLElement;
+    const parent = video.parentElement!;
+    expect(btn.parentElement).toBe(parent);
+
+    const fs = document.createElement("div");
+    document.body.appendChild(fs);
+    Object.defineProperty(document, "fullscreenElement", { value: fs, configurable: true });
+    document.dispatchEvent(new Event("fullscreenchange"));
+    expect(btn.parentElement).toBe(fs);
+
+    Object.defineProperty(document, "fullscreenElement", { value: null, configurable: true });
+    document.dispatchEvent(new Event("fullscreenchange"));
+    expect(btn.parentElement).toBe(parent);
+  });
+
+  it("leaves computed-fixed parent position alone (does not overwrite with relative)", () => {
+    const parent = document.createElement("div");
+    const video = document.createElement("video");
+    parent.appendChild(video);
+    document.body.appendChild(parent);
+    // Mock computed style to return "fixed"
+    const origGetComputedStyle = window.getComputedStyle;
+    (window.getComputedStyle as any) = () => ({ position: "fixed" });
+    mountOverlay({ video, options: [], onSelect: vi.fn() });
+    (window.getComputedStyle as any) = origGetComputedStyle;
+    expect(parent.style.position).toBe("");  // not overwritten
+  });
+
+  it("destroys ResizeObserver and fullscreenchange listener on destroy()", () => {
+    const video = mkVideo();
+    const handle = mountOverlay({ video, options: [], onSelect: vi.fn() });
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+    handle.destroy();
+    expect(removeSpy).toHaveBeenCalledWith("fullscreenchange", expect.any(Function));
+    removeSpy.mockRestore();
+  });
 });

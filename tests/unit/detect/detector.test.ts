@@ -131,4 +131,20 @@ describe("BaseDetector", () => {
     expect(spy).toHaveBeenCalledWith(options2);
     d.stop();
   });
+
+  it("stop() prevents mounting even if getOptions promise resolves after stop", async () => {
+    class SlowDetector extends BaseDetector {
+      protected shouldHandle(): boolean { return true; }
+      protected getOptions(): Promise<OverlayOption[]> {
+        return new Promise((r) => setTimeout(() => r([{ label: "x", url: "u" }]), 20));
+      }
+      size(): number { return this.handles.size; }
+    }
+    addVideo();
+    const d = new SlowDetector();
+    d.start();
+    d.stop();
+    await new Promise((r) => setTimeout(r, 30));   // wait past the 20ms delay
+    expect(d.size()).toBe(0);
+  });
 });
