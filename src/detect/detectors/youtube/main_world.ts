@@ -94,13 +94,22 @@ async function handleRequestFormats(): Promise<void> {
 
   const { options, totalFormats, decodedFormats } = result;
 
-  // Spec §6.4: if > 50% of formats failed to decode, emit decode_exception
-  if (totalFormats > 0 && decodedFormats / totalFormats < 0.5) {
+  // Spec §6.4: >50% decode failure emits decode_exception — but ONLY when
+  // the signature decoder IS available. If signature is unavailable, the
+  // failure is EXPECTED (YouTube obfuscation changed) and the sniffer is
+  // still filling in URLs; emitting an error here would mask the UI from
+  // ever getting updated options. Instead, emit formats-ready with whatever
+  // we have (possibly empty); the sniffer's onUrlCaptured → handleRequestFormats
+  // callback will re-emit with more options as YouTube's player decodes URLs.
+  if (decoders.signature && totalFormats > 0 && decodedFormats / totalFormats < 0.5) {
     postError("decode_exception", videoId);
     return;
   }
 
-  if (options.length === 0) {
+  // If no options and we have no signature decoder, the sniffer will
+  // populate as YouTube plays. Stay in "detecting" state rather than
+  // erroring out.
+  if (options.length === 0 && decoders.signature) {
     postError("no_formats", videoId);
     return;
   }
