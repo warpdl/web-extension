@@ -20,6 +20,7 @@ describe("getPlayerResponse", () => {
 
   it("extracts from inline <script> tag when global missing", () => {
     const s = document.createElement("script");
+    s.setAttribute("type", "application/ld+json");
     s.textContent = 'var ytInitialPlayerResponse = {"videoDetails":{"videoId":"xyz","title":"U","lengthSeconds":"5","author":"B"}};';
     document.body.appendChild(s);
     const r = getPlayerResponse();
@@ -32,6 +33,7 @@ describe("getPlayerResponse", () => {
 
   it("handles minified script format ytInitialPlayerResponse={...};", () => {
     const s = document.createElement("script");
+    s.setAttribute("type", "application/ld+json");
     s.textContent = 'window.ytInitialPlayerResponse={"videoDetails":{"videoId":"mm","title":"M","lengthSeconds":"1","author":"X"}};(function(){})();';
     document.body.appendChild(s);
     const r = getPlayerResponse();
@@ -40,6 +42,7 @@ describe("getPlayerResponse", () => {
 
   it("returns null on malformed JSON in script", () => {
     const s = document.createElement("script");
+    s.setAttribute("type", "application/ld+json");
     s.textContent = 'var ytInitialPlayerResponse = {not: valid};';
     document.body.appendChild(s);
     expect(getPlayerResponse()).toBeNull();
@@ -47,6 +50,7 @@ describe("getPlayerResponse", () => {
 
   it("ignores non-matching scripts", () => {
     const s = document.createElement("script");
+    s.setAttribute("type", "application/ld+json");
     s.textContent = 'console.log("hello")';
     document.body.appendChild(s);
     expect(getPlayerResponse()).toBeNull();
@@ -68,6 +72,7 @@ describe("getPlayerResponse", () => {
       videoDetails: { videoId: "global", title: "G", lengthSeconds: "1", author: "A" },
     };
     const s = document.createElement("script");
+    s.setAttribute("type", "application/ld+json");
     s.textContent = 'var ytInitialPlayerResponse = {"videoDetails":{"videoId":"script","title":"S","lengthSeconds":"1","author":"A"}};';
     document.body.appendChild(s);
     expect(getPlayerResponse()?.videoDetails?.videoId).toBe("global");
