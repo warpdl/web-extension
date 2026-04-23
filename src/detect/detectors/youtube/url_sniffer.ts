@@ -24,6 +24,7 @@ export function installSniffer(): void {
 
   hookFetch();
   hookXhr();
+  hookPerformanceObserver();
 }
 
 export function getCapturedUrl(itag: number): string | undefined {
@@ -52,12 +53,6 @@ function maybeCapture(rawUrl: string): void {
   const itagMatch = rawUrl.match(/[?&]itag=(\d+)/);
   if (!itagMatch) return;
 
-  // Must carry a signature AND/OR a decoded n-param. If neither is present,
-  // this isn't a signed URL — probably a non-format request like a stats ping.
-  // (Heuristic: real format URLs always have `sig=`, `signature=`, `lsig=`, or a
-  // transformed `n=`. We just require itag + googlevideo which is already
-  // strong filter.)
-
   const itag = parseInt(itagMatch[1], 10);
   if (!Number.isFinite(itag)) return;
 
@@ -66,6 +61,7 @@ function maybeCapture(rawUrl: string): void {
   if (cache.has(itag)) return;
 
   cache.set(itag, rawUrl);
+  console.info("[WarpDL YT] captured itag=" + itag + " url=" + rawUrl.slice(0, 120) + "...");
   for (const l of listeners) {
     try { l(itag, rawUrl); } catch { /* listener errors must not break hooks */ }
   }
@@ -109,4 +105,35 @@ function hookXhr(): void {
 
     return origOpen.call(this, method, url, isAsync as boolean, user, password);
   };
+}
+
+/**
+ * Reads the browser's internal network log via the Performance API.
+ * This bypasses the MV3 content-script timing problem: YouTube's player
+ * may capture fetch/XHR references before our patches install, so patches
+ * miss early requests. PerformanceObserver sees every resource load
+ * regardless of when we start observing (with `buffered: true`).
+ */
+function hookPerformanceObserver(): void {
+  if (typeof PerformanceObserver !== "function") return;
+
+  try {
+    // Scan any resources already loaded before we started.
+    const existing = performance.getEntriesByType("resource");
+    for (const entry of existing) {
+      const name = (entry as PerformanceResourceTiming).name;
+      if (typeof name === "string") maybeCapture(name);
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        const name = (entry as PerformanceResourceTiming).name;
+        if (typeof name === "string") maybeCapture(name);
+      }
+    });
+    // `buffered: true` lets us see entries that happened before observe() was called
+    observer.observe({ type: "resource", buffered: true });
+  } catch { /* some browsers reject non-standard options */ }
 }

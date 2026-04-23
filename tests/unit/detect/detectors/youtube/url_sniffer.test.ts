@@ -124,6 +124,56 @@ describe("onUrlCaptured", () => {
   });
 });
 
+describe("PerformanceObserver integration", () => {
+  it("captures from existing performance entries on install (buffered)", () => {
+    // Fake performance.getEntriesByType to return a pre-populated list
+    const origGet = performance.getEntriesByType.bind(performance);
+    (performance as any).getEntriesByType = (type: string) => {
+      if (type === "resource") {
+        return [
+          { name: "https://r1.googlevideo.com/videoplayback?itag=299&n=abc" },
+          { name: "https://www.youtube.com/api/stats?ns=yt" },
+        ];
+      }
+      return origGet(type);
+    };
+
+    installSniffer();
+    expect(getCapturedUrl(299)).toContain("itag=299");
+
+    // Restore
+    (performance as any).getEntriesByType = origGet;
+  });
+
+  it("observes new performance entries as they arrive", () => {
+    // Fake PerformanceObserver so we can inject entries synchronously
+    const origObserver = (globalThis as any).PerformanceObserver;
+    let capturedCb: PerformanceObserverCallback | null = null;
+    (globalThis as any).PerformanceObserver = class {
+      constructor(cb: PerformanceObserverCallback) { capturedCb = cb; }
+      observe() { /* no-op */ }
+      disconnect() { /* no-op */ }
+    };
+
+    installSniffer();
+    // Simulate a new resource entry
+    capturedCb!({
+      getEntries: () => [{ name: "https://r1.googlevideo.com/videoplayback?itag=313" } as PerformanceEntry],
+    } as PerformanceObserverEntryList, {} as PerformanceObserver);
+
+    expect(getCapturedUrl(313)).toContain("itag=313");
+
+    (globalThis as any).PerformanceObserver = origObserver;
+  });
+
+  it("tolerates missing PerformanceObserver API", () => {
+    const origObserver = (globalThis as any).PerformanceObserver;
+    delete (globalThis as any).PerformanceObserver;
+    expect(() => installSniffer()).not.toThrow();
+    (globalThis as any).PerformanceObserver = origObserver;
+  });
+});
+
 describe("getCapturedItags", () => {
   it("returns empty list when nothing captured", () => {
     installSniffer();
