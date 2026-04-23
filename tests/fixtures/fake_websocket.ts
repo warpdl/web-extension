@@ -18,6 +18,11 @@ export class FakeWebSocket {
   send = vi.fn((_data: string) => {
     /* tests can override via spy */
   });
+  /**
+   * Spy that mirrors real WebSocket.close(): sets readyState=CLOSED immediately,
+   * then fires onclose asynchronously via real setTimeout (NOT FakeClock).
+   * Use simulateClose() in tests that need onclose to fire synchronously.
+   */
   close = vi.fn((code?: number, reason?: string) => {
     this.readyState = 3;
     setTimeout(() => this.onclose?.({ code: code ?? 1000, reason: reason ?? "", type: "close", wasClean: true } as unknown as CloseEvent), 0);
@@ -62,6 +67,6 @@ export function makeWsFactory(): {
   return {
     factory,
     lastSocket: () => sockets[sockets.length - 1] ?? null,
-    allSockets: () => sockets,
+    allSockets: () => [...sockets],
   };
 }

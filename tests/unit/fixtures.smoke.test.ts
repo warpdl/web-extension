@@ -47,4 +47,23 @@ describe("fixtures smoke", () => {
     expect((globalThis as any).chrome).toBeDefined();
     expect((globalThis as any).chrome.runtime.sendMessage).toBeDefined();
   });
+
+  it("FakeClock rejects setInterval with ms <= 0", () => {
+    const clock = new FakeClock();
+    expect(() => clock.setInterval(() => {}, 0)).toThrow("FakeClock.setInterval requires ms > 0");
+  });
+
+  it("FakeClock rejects negative tick", () => {
+    const clock = new FakeClock();
+    expect(() => clock.tick(-1)).toThrow("FakeClock.tick requires ms >= 0");
+  });
+
+  it("mkEvent fire isolates subscriber errors", () => {
+    const chromeMock = (globalThis as any).chrome;
+    const calls: string[] = [];
+    chromeMock.runtime.onMessage.addListener(() => { throw new Error("A throws"); });
+    chromeMock.runtime.onMessage.addListener(() => { calls.push("B"); });
+    expect(() => chromeMock.runtime.onMessage.fire({}, {}, () => {})).not.toThrow();
+    expect(calls).toContain("B");
+  });
 });

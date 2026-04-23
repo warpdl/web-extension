@@ -33,6 +33,7 @@ export class FakeClock implements Clock {
   }
 
   setInterval(cb: () => void, ms: number): number {
+    if (ms <= 0) throw new Error("FakeClock.setInterval requires ms > 0");
     const id = this.nextId++;
     this.timers.push({ id, fireAt: this.currentTime + ms, cb, interval: ms });
     return id;
@@ -43,6 +44,7 @@ export class FakeClock implements Clock {
   }
 
   tick(ms: number): void {
+    if (ms < 0) throw new Error("FakeClock.tick requires ms >= 0");
     const target = this.currentTime + ms;
     while (true) {
       const next = this.timers

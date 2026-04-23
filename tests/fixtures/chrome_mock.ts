@@ -12,7 +12,14 @@ function mkEvent<T extends (...args: any[]) => any>() {
     },
     hasListener: (l: T) => listeners.includes(l),
     fire: (...args: Parameters<T>) => {
-      for (const l of listeners) l(...args);
+      const snapshot = listeners.slice();
+      for (const l of snapshot) {
+        try {
+          l(...args);
+        } catch {
+          // Listener errors are isolated; don't break delivery to other listeners.
+        }
+      }
     },
     listeners: () => listeners.slice(),
   };
