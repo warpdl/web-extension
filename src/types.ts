@@ -31,13 +31,48 @@ export interface CapturedDownload {
 export interface ExtensionSettings {
   daemonUrl: string; // e.g. "localhost:3850"
   interceptDownloads: boolean;
+  // Optional Bearer token for the daemon's /jsonrpc endpoint. Empty = no
+  // authentication header sent. The /jsonrpc endpoint rejects requests
+  // when the daemon was started with a secret set.
+  daemonSecret?: string;
+}
+
+// ── Daemon resolve.url RPC ──
+
+export interface ResolvedFormat {
+  formatId: string;
+  url: string;
+  ext: string;
+  mimeType?: string;
+  quality?: string;
+  fileSize?: number;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  videoCodec?: string;
+  audioCodec?: string;
+  height?: number;
+  width?: number;
+  fps?: number;
+  audioBitrate?: number;
+}
+
+export interface ResolveUrlResult {
+  title: string;
+  author?: string;
+  duration?: number;
+  formats: ResolvedFormat[];
 }
 
 // ── Internal messaging (content script / popup <-> service worker) ──
 
 export type ExtensionMessage =
   | { type: "DOWNLOAD_VIDEO"; url: string; fileName?: string; pageUrl?: string }
-  | { type: "GET_CONNECTION_STATUS" };
+  | { type: "GET_CONNECTION_STATUS" }
+  | { type: "RESOLVE_YT_URL"; pageUrl: string };
+
+export type ResolveYtUrlResponse =
+  | { ok: true; result: ResolveUrlResult }
+  | { ok: false; error: string; code?: number };
 
 export interface ConnectionStatusResponse {
   connected: boolean;

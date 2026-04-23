@@ -2,6 +2,9 @@ import type { EventBus } from "../core/events";
 import type { Logger } from "../core/logger";
 import type { DaemonClient } from "../daemon/client";
 import type { VideoResponse } from "../downloads/video_handler";
+import type { ResolveYtUrlResponse } from "../types";
+import { resolveUrl, DaemonRpcError } from "../daemon/rpc_client";
+import { loadSettings } from "../settings";
 
 interface VideoHandlerLike {
   handle(msg: { type: "DOWNLOAD_VIDEO"; url: string; fileName?: string; pageUrl?: string }): Promise<VideoResponse>;
@@ -16,11 +19,13 @@ interface Deps {
 
 export type IncomingMessage =
   | { type: "DOWNLOAD_VIDEO"; url: string; fileName?: string; pageUrl?: string }
-  | { type: "GET_CONNECTION_STATUS" };
+  | { type: "GET_CONNECTION_STATUS" }
+  | { type: "RESOLVE_YT_URL"; pageUrl: string };
 
 type Response =
   | VideoResponse
   | { connected: boolean; state: string }
+  | ResolveYtUrlResponse
   | { error: string };
 
 export class MessageRouter {
@@ -41,6 +46,8 @@ export class MessageRouter {
           return await this.video.handle(msg);
         case "GET_CONNECTION_STATUS":
           return { connected: this.daemon.state === "OPEN", state: this.daemon.state };
+        case "RESOLVE_YT_URL":
+          return await this.resolve(msg.pageUrl);
         default: {
           const unknownMsg = msg as { type: string };
           this.log.warn("unknown_message_type", { type: unknownMsg.type });
@@ -50,6 +57,24 @@ export class MessageRouter {
     } catch (e) {
       this.log.error("handler_threw", { type: (msg as { type: string }).type }, e);
       return { error: "handler_threw" };
+    }
+  }
+
+  private async resolve(pageUrl: string): Promise<ResolveYtUrlResponse> {
+    const settings = await loadSettings();
+    try {
+      const result = await resolveUrl(pageUrl, {
+        host: settings.daemonUrl,
+        secret: settings.daemonSecret,
+      });
+      return { ok: true, result };
+    } catch (e) {
+      if (e instanceof DaemonRpcError) {
+        this.log.warn("resolve_failed", { code: e.code ?? null, message: e.message });
+        return { ok: false, error: e.message, code: e.code };
+      }
+      this.log.error("resolve_threw", {}, e);
+      return { ok: false, error: (e as Error).message ?? "unknown" };
     }
   }
 }

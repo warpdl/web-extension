@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { YouTubeDetector } from "../../../../../src/detect/detectors/youtube/detector";
-import type { YtBridgeMessage } from "../../../../../src/types";
+import type { ResolveYtUrlResponse } from "../../../../../src/types";
+
+let sendMessageSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   (globalThis as any).ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
-  (globalThis as any).chrome = { runtime: { sendMessage: vi.fn() } };
+  sendMessageSpy = vi.fn();
+  (globalThis as any).chrome = {
+    runtime: {
+      sendMessage: sendMessageSpy,
+    },
+  };
 });
 
 afterEach(() => {
@@ -21,20 +28,17 @@ function makeYouTubePlayer(): HTMLVideoElement {
   return video;
 }
 
-function postFromMain(msg: YtBridgeMessage): Promise<void> {
-  return new Promise((resolve) => {
-    window.postMessage(msg, "*");
-    setTimeout(resolve, 10);
-  });
+async function flush(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 0));
 }
 
-describe("YouTubeDetector", () => {
-  it("mounts overlay on #movie_player video with empty options initially", () => {
+describe("YouTubeDetector (daemon-backed)", () => {
+  it("mounts overlay on #movie_player video", () => {
     makeYouTubePlayer();
+    sendMessageSpy.mockResolvedValue({ ok: false, error: "test" } as ResolveYtUrlResponse);
     const d = new YouTubeDetector();
     d.start();
-    const btn = document.querySelector("[data-warpdl-overlay-btn]");
-    expect(btn).not.toBeNull();
+    expect(document.querySelector("[data-warpdl-overlay-btn]")).not.toBeNull();
     d.stop();
   });
 
@@ -47,42 +51,97 @@ describe("YouTubeDetector", () => {
     d.stop();
   });
 
-  it("sends request-formats postMessage on start", async () => {
+  it("calls RESOLVE_YT_URL on start with the current location.href", async () => {
     makeYouTubePlayer();
-    const received: YtBridgeMessage[] = [];
-    const handler = (ev: MessageEvent) => {
-      // ev.source is null in jsdom when the message originates from the same window
-      if (ev.source !== null && ev.source !== window) return;
-      if (ev.data?.source === "warpdl-yt-content") received.push(ev.data);
-    };
-    window.addEventListener("message", handler);
+    sendMessageSpy.mockResolvedValue({ ok: true, result: { title: "t", formats: [] } } as ResolveYtUrlResponse);
     const d = new YouTubeDetector();
     d.start();
-    await new Promise((r) => setTimeout(r, 20));
-    window.removeEventListener("message", handler);
-    expect(received.some((m) => m.type === "request-formats")).toBe(true);
-    d.stop();
-  });
-
-  it("updates overlay options when formats-ready received", async () => {
-    makeYouTubePlayer();
-    const d = new YouTubeDetector();
-    d.start();
-    await postFromMain({
-      source: "warpdl-yt-main",
-      type: "formats-ready",
-      options: [{ label: "720p · mp4", url: "https://a/x", group: "Combined" }],
-      videoId: "abc",
-      title: "T",
+    await flush();
+    expect(sendMessageSpy).toHaveBeenCalledWith({
+      type: "RESOLVE_YT_URL",
+      pageUrl: window.location.href,
     });
-    // Click to open dropdown to verify
-    (document.querySelector("[data-warpdl-overlay-btn]") as HTMLElement).click();
-    expect(document.querySelector("[data-warpdl-overlay-item]")).not.toBeNull();
     d.stop();
   });
 
-  it("stop removes overlay and message listener", async () => {
+  it("populates overlay with returned formats, grouped", async () => {
     makeYouTubePlayer();
+    const resp: ResolveYtUrlResponse = {
+      ok: true,
+      result: {
+        title: "My Video",
+        formats: [
+          {
+            formatId: "22",
+            url: "https://a/video22.mp4",
+            ext: "mp4",
+            hasVideo: true,
+            hasAudio: true,
+            height: 720,
+            quality: "720p",
+            fileSize: 1048576,
+          },
+          {
+            formatId: "137",
+            url: "https://a/video137.mp4",
+            ext: "mp4",
+            hasVideo: true,
+            hasAudio: false,
+            height: 1080,
+            quality: "1080p",
+          },
+          {
+            formatId: "140",
+            url: "https://a/audio140.m4a",
+            ext: "m4a",
+            hasVideo: false,
+            hasAudio: true,
+            audioBitrate: 128,
+          },
+        ],
+      },
+    };
+    sendMessageSpy.mockResolvedValue(resp);
+
+    const d = new YouTubeDetector();
+    d.start();
+    await flush();
+    await flush();
+
+    (document.querySelector("[data-warpdl-overlay-btn]") as HTMLElement).click();
+    const items = Array.from(document.querySelectorAll("[data-warpdl-overlay-item]"));
+    expect(items.length).toBe(3);
+
+    const headers = Array.from(document.querySelectorAll("[data-warpdl-overlay-group]")).map((h) => h.textContent);
+    expect(headers).toContain("Combined");
+    expect(headers).toContain("Video only");
+    expect(headers).toContain("Audio only");
+
+    d.stop();
+  });
+
+  it("renders no options on resolve failure (error logged)", async () => {
+    makeYouTubePlayer();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    sendMessageSpy.mockResolvedValue({ ok: false, error: "yt-dlp not found", code: -32101 } as ResolveYtUrlResponse);
+
+    const d = new YouTubeDetector();
+    d.start();
+    await flush();
+
+    expect(warnSpy).toHaveBeenCalled();
+    // No dropdown items when resolve failed — clicking the button opens
+    // nothing (empty options list).
+    (document.querySelector("[data-warpdl-overlay-btn]") as HTMLElement).click();
+    expect(document.querySelectorAll("[data-warpdl-overlay-item]").length).toBe(0);
+
+    warnSpy.mockRestore();
+    d.stop();
+  });
+
+  it("stop removes overlay", () => {
+    makeYouTubePlayer();
+    sendMessageSpy.mockResolvedValue({ ok: true, result: { title: "t", formats: [] } } as ResolveYtUrlResponse);
     const d = new YouTubeDetector();
     d.start();
     expect(document.querySelector("[data-warpdl-overlay-btn]")).not.toBeNull();
@@ -90,27 +149,33 @@ describe("YouTubeDetector", () => {
     expect(document.querySelector("[data-warpdl-overlay-btn]")).toBeNull();
   });
 
-  it("clears overlay options on formats-error", async () => {
+  it("does not re-resolve when URL is unchanged", async () => {
     makeYouTubePlayer();
+    sendMessageSpy.mockResolvedValue({ ok: true, result: { title: "t", formats: [] } } as ResolveYtUrlResponse);
     const d = new YouTubeDetector();
     d.start();
-    // First set some options so there's something to clear
-    await postFromMain({
-      source: "warpdl-yt-main",
-      type: "formats-ready",
-      options: [{ label: "720p · mp4", url: "https://a/x", group: "Combined" }],
-      videoId: "abc",
-      title: "T",
-    });
-    // Now send formats-error — should clear options without throwing
-    await postFromMain({
-      source: "warpdl-yt-main",
-      type: "formats-error",
-      reason: "base_js_fetch_failed",
-      videoId: "abc",
-    });
-    // Overlay button should still exist (detector is still running)
-    expect(document.querySelector("[data-warpdl-overlay-btn]")).not.toBeNull();
+    await flush();
+    document.dispatchEvent(new Event("yt-navigate-finish"));
+    await new Promise((r) => setTimeout(r, 600));
+    expect(sendMessageSpy).toHaveBeenCalledTimes(1);
+    d.stop();
+  });
+
+  it("re-resolves when SPA URL changes", async () => {
+    makeYouTubePlayer();
+    sendMessageSpy.mockResolvedValue({ ok: true, result: { title: "t", formats: [] } } as ResolveYtUrlResponse);
+    const d = new YouTubeDetector();
+    d.start();
+    await flush();
+
+    window.history.replaceState(null, "", "/watch?v=new");
+    document.dispatchEvent(new Event("yt-navigate-finish"));
+    await new Promise((r) => setTimeout(r, 600));
+
+    // At least two calls total; the second should include the new URL.
+    expect(sendMessageSpy).toHaveBeenCalled();
+    const calledPageUrls = sendMessageSpy.mock.calls.map((args) => (args[0] as { pageUrl: string }).pageUrl);
+    expect(calledPageUrls.some((u) => u.endsWith("/watch?v=new"))).toBe(true);
     d.stop();
   });
 });
