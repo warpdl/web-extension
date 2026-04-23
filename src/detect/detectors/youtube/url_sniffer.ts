@@ -25,6 +25,26 @@ export function installSniffer(): void {
   hookFetch();
   hookXhr();
   hookPerformanceObserver();
+  hookContentScriptBridge();
+}
+
+/**
+ * Receives URLs captured by the background script's chrome.webRequest
+ * listener — these are forwarded via the isolated-world content script
+ * using window.postMessage. This is our ONLY source of truth when
+ * YouTube uses a Service Worker (which hides requests from Performance
+ * API and fetch/XHR patches).
+ */
+function hookContentScriptBridge(): void {
+  if (typeof window === "undefined") return;
+  window.addEventListener("message", (ev: MessageEvent) => {
+    if (ev.source !== null && ev.source !== window) return;
+    const data = ev.data as { source?: string; type?: string; itag?: number; url?: string } | null;
+    if (!data || data.source !== "warpdl-yt-content") return;
+    if (data.type !== "yt-url-captured") return;
+    if (typeof data.itag !== "number" || typeof data.url !== "string") return;
+    maybeCapture(data.url);
+  });
 }
 
 export function getCapturedUrl(itag: number): string | undefined {
