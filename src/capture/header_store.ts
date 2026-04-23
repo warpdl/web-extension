@@ -1,11 +1,4 @@
-// NOTE: we don't import Clock from tests/. Re-declare it for production code.
-// Tests pass a compatible shape.
-
-interface ClockLike {
-  now(): number;
-  setInterval(cb: () => void, ms: number): number;
-  clearInterval(id: number): void;
-}
+import type { Clock } from "../core/clock";
 
 export interface CapturedHeader {
   name: string;
@@ -18,7 +11,7 @@ interface Entry {
 }
 
 interface Opts {
-  clock: ClockLike;
+  clock: Clock;
   ttlMs?: number;
   sweepMs?: number;
   cap?: number;
@@ -26,7 +19,7 @@ interface Opts {
 
 export class HeaderStore {
   private map = new Map<string, Entry>();
-  private clock: ClockLike;
+  private clock: Clock;
   private ttlMs: number;
   private sweepMs: number;
   private cap: number;
