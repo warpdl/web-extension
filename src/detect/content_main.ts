@@ -9,6 +9,7 @@ export function pickDetector(hostname: string): Detector {
   return new GenericDetector();
 }
 
+/* c8 ignore next 6 */
 function boot(): void {
   const detector = pickDetector(location.hostname);
   detector.start();
@@ -18,6 +19,7 @@ function boot(): void {
 // Auto-run unless loaded by tests
 declare const process: { env: Record<string, string | undefined> } | undefined;
 
+/* c8 ignore next 12 */
 if (
   typeof document !== "undefined" &&
   !(globalThis as any).__WARPDL_CONTENT_MAIN_LOADED__ &&

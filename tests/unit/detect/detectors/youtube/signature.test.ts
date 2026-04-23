@@ -112,6 +112,22 @@ describe("decodeFormatUrl", () => {
     const result = decodeFormatUrl(format, { signature: (s) => s, nParam: (n) => n });
     expect(result).toBe("not a url");
   });
+
+  it("appends & before sig param when base URL already has query params", () => {
+    // Exercises line 94: baseUrl.includes("?") ? "&" : "?" — the true ("&") branch
+    const decoders = extractDecoders(syntheticBaseJs);
+    const cipher = "s=" + encodeURIComponent("abcdef") + "&sp=sig&url=" + encodeURIComponent("https://a.com/video.mp4?foo=bar");
+    const result = decodeFormatUrl({ signatureCipher: cipher } as any, decoders);
+    expect(result).toContain("&sig=");
+  });
+
+  it("uses default 'sig' sp param when signatureCipher lacks sp field", () => {
+    // Exercises line 85: params.get("sp") ?? "sig" — the null fallback
+    const decoders = extractDecoders(syntheticBaseJs);
+    const cipher = "s=" + encodeURIComponent("abcdef") + "&url=" + encodeURIComponent("https://a.com/video.mp4");
+    const result = decodeFormatUrl({ signatureCipher: cipher } as any, decoders);
+    expect(result).toContain("sig=");
+  });
 });
 
 describe("extractDecoders - edge cases", () => {
@@ -129,5 +145,17 @@ describe("extractDecoders - edge cases", () => {
     expect(decoders.signature).toBeDefined();
     // Calling it will throw because UndefinedHelper is undefined.
     expect(() => decoders.signature("abc")).toThrow();
+  });
+
+  it("throws function_build_failed when new Function construction fails (syntax error in body)", () => {
+    // Exercises lines 75-77: catch block in buildDecodeFunction when new Function throws
+    // Inject a function body with a syntax error that causes new Function to throw
+    const baseJs = `
+      var sigDecode=function(a){ ===SYNTAX_ERROR=== };
+      a.set("alr","yes");c&&(c=sigDecode(decodeURIComponent(c)));
+      var nDecode=function(b){return b};
+      &&(b=a.get("n"))&&(b=nDecode(b));
+    `;
+    expect(() => extractDecoders(baseJs)).toThrow(/function_build_failed|signature_extract_failed/);
   });
 });

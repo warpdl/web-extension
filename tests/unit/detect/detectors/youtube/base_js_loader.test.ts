@@ -104,4 +104,28 @@ describe("loadBaseJs", () => {
   it("throws when URL has no extractable hash", async () => {
     await expect(loadBaseJs("https://www.youtube.com/not-base.js")).rejects.toThrow();
   });
+
+  it("falls through to fetch when chrome.storage.local.get throws", async () => {
+    // Exercises line 37: catch block when chrome.storage.get throws
+    const body = "var fallback = 1;";
+    (globalThis as any).chrome.storage.local.get = vi.fn(async () => {
+      throw new Error("storage unavailable");
+    });
+    (globalThis as any).fetch = vi.fn(async () => ({ ok: true, text: async () => body }));
+    const result = await loadBaseJs("https://www.youtube.com/s/player/catchtest/player_ias.vflset/en_US/base.js");
+    expect(result).toBe(body);
+    expect((globalThis as any).fetch).toHaveBeenCalled();
+  });
+
+  it("silently ignores chrome.storage.local.set failure", async () => {
+    // Exercises line 48: catch block when chrome.storage.set throws
+    const body = "var persist = 2;";
+    (globalThis as any).fetch = vi.fn(async () => ({ ok: true, text: async () => body }));
+    (globalThis as any).chrome.storage.local.set = vi.fn(async () => {
+      throw new Error("storage write failed");
+    });
+    // Should not throw — persistence failure is silently ignored
+    const result = await loadBaseJs("https://www.youtube.com/s/player/setfail/player_ias.vflset/en_US/base.js");
+    expect(result).toBe(body);
+  });
 });

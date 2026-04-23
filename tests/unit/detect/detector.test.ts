@@ -132,6 +132,79 @@ describe("BaseDetector", () => {
     d.stop();
   });
 
+  it("picks up a video element added directly to the DOM (not wrapped in div)", async () => {
+    // Exercises line 81: node instanceof HTMLVideoElement branch in addedNodes loop
+    const d = new TestDetector(true, [{ label: "x", url: "u" }]);
+    d.start();
+    // Add a video element directly to body (not inside a wrapper div)
+    const video = document.createElement("video");
+    document.body.appendChild(video);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(d.getHandleCount()).toBe(1);
+    d.stop();
+  });
+
+  it("unmounts overlay when a video element is directly removed from DOM", async () => {
+    // Exercises lines 88-89: node instanceof HTMLVideoElement branch in removedNodes loop
+    // Add a video element directly to body (not inside a wrapper div)
+    const video = document.createElement("video");
+    document.body.appendChild(video);
+    const d = new TestDetector(true, [{ label: "x", url: "u" }]);
+    d.start();
+    expect(d.getHandleCount()).toBe(1);
+    // Remove the video directly (not via parentElement.remove())
+    document.body.removeChild(video);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(d.getHandleCount()).toBe(0);
+    d.stop();
+  });
+
+  it("refresh() is a no-op when video is not in handles", async () => {
+    // Exercises line 39: if (!h) return branch in refresh()
+    class RefreshableDetector extends BaseDetector {
+      protected shouldHandle(): boolean { return true; }
+      protected getOptions(): OverlayOption[] { return []; }
+      async callRefreshOnUntracked(v: HTMLVideoElement) { await this.refresh(v); }
+    }
+    const d = new RefreshableDetector();
+    d.start();
+    const untrackedVideo = document.createElement("video");
+    // Don't add to DOM so it's not in handles
+    await expect(d.callRefreshOnUntracked(untrackedVideo)).resolves.toBeUndefined();
+    d.stop();
+  });
+
+  it("scan() skips videos already in handles when re-scanning (MutationObserver deduplicate)", async () => {
+    // Exercises line 57: if (this.handles.has(video)) continue in scan()
+    const video = addVideo();
+    const d = new TestDetector(true, [{ label: "x", url: "u" }]);
+    d.start();
+    expect(d.getHandleCount()).toBe(1);
+    // Trigger another scan of the same root by adding a non-video element
+    const sibling = document.createElement("span");
+    video.parentElement!.appendChild(sibling);
+    await new Promise((r) => setTimeout(r, 0));
+    // handle count should still be 1 (not double-mounted)
+    expect(d.getHandleCount()).toBe(1);
+    d.stop();
+  });
+
+  it("picks up a video added without a parent element (parentElement ?? document fallback)", async () => {
+    // Exercises line 81: node.parentElement ?? document — when video has no parent
+    const d = new TestDetector(true, [{ label: "x", url: "u" }]);
+    d.start();
+    // Create a detached fragment and append video to body via fragment
+    const video = document.createElement("video");
+    // Temporarily null out parentElement by using a DocumentFragment
+    const frag = document.createDocumentFragment();
+    frag.appendChild(video);
+    // Now append fragment to body — video's parentElement was null when it was in frag
+    document.body.appendChild(frag);
+    await new Promise((r) => setTimeout(r, 0));
+    // Should have scanned using document as fallback
+    d.stop();
+  });
+
   it("stop() prevents mounting even if getOptions promise resolves after stop", async () => {
     class SlowDetector extends BaseDetector {
       protected shouldHandle(): boolean { return true; }

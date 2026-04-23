@@ -89,4 +89,28 @@ describe("YouTubeDetector", () => {
     d.stop();
     expect(document.querySelector("[data-warpdl-overlay-btn]")).toBeNull();
   });
+
+  it("clears overlay options on formats-error", async () => {
+    makeYouTubePlayer();
+    const d = new YouTubeDetector();
+    d.start();
+    // First set some options so there's something to clear
+    await postFromMain({
+      source: "warpdl-yt-main",
+      type: "formats-ready",
+      options: [{ label: "720p · mp4", url: "https://a/x", group: "Combined" }],
+      videoId: "abc",
+      title: "T",
+    });
+    // Now send formats-error — should clear options without throwing
+    await postFromMain({
+      source: "warpdl-yt-main",
+      type: "formats-error",
+      reason: "base_js_fetch_failed",
+      videoId: "abc",
+    });
+    // Overlay button should still exist (detector is still running)
+    expect(document.querySelector("[data-warpdl-overlay-btn]")).not.toBeNull();
+    d.stop();
+  });
 });

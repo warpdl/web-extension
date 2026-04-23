@@ -197,6 +197,79 @@ describe("buildOptions", () => {
     expect(audio[2].label).toContain("LOW");
   });
 
+  it("handles audio formats without audioQuality (rank falls through to 0)", () => {
+    // Exercises the return 0 fallback in byAudioQualityDesc (formats.ts line 98)
+    const pr = mk({
+      streamingData: {
+        adaptiveFormats: [
+          { url: "https://a/unknown1.m4a", mimeType: "audio/mp4" }, // no audioQuality
+          { url: "https://a/unknown2.m4a", mimeType: "audio/mp4" }, // no audioQuality
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    const audio = options.filter((o) => o.group === "Audio only");
+    // Both rank as 0, order is stable — just verify both are present
+    expect(audio).toHaveLength(2);
+  });
+
+  it("falls back to 'bin' extension for mime types without slash", () => {
+    // Exercises line 66: extFromMime when no '/' in mime — returns 'bin'
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/v.bin", mimeType: "application", qualityLabel: "720p" },
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    expect(options[0].fileName).toMatch(/\.bin$/);
+  });
+
+  it("returns empty size string for non-finite contentLength", () => {
+    // Exercises line 72: !Number.isFinite(n) return "" when contentLength is not a number
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/v.mp4", mimeType: "video/mp4", qualityLabel: "720p", contentLength: "NaN" },
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    // Label should not include any size annotation
+    expect(options[0].label).not.toMatch(/\d+ (KB|MB|GB|B)$/);
+  });
+
+  it("returns 0 quality for qualityLabel with no leading digits", () => {
+    // Exercises line 82: parseQuality fallback when regex doesn't match
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/v.mp4", mimeType: "video/mp4", qualityLabel: "hd" }, // no leading digit
+          { url: "https://a/v2.mp4", mimeType: "video/mp4", qualityLabel: "720p" },
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    // 720p should be first (higher quality), hd second (quality 0)
+    expect(options[0].label).toContain("720p");
+  });
+
+  it("sorts adaptive video by height, using 0 as fallback for missing height", () => {
+    // Exercises line 90: b.height ?? 0 fallback
+    const pr = mk({
+      streamingData: {
+        adaptiveFormats: [
+          { url: "https://a/low.mp4", mimeType: "video/mp4", qualityLabel: "360p" }, // no height
+          { url: "https://a/high.mp4", mimeType: "video/mp4", qualityLabel: "1080p", height: 1080 },
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    const video = options.filter((o) => o.group === "Video only");
+    expect(video[0].label).toContain("1080p");
+  });
+
   it("returns totalFormats and decodedFormats counts", () => {
     const pr = mk({
       streamingData: {

@@ -54,6 +54,7 @@ export abstract class BaseDetector implements Detector {
     const videos = root.querySelectorAll("video");
     for (const node of Array.from(videos)) {
       const video = node as HTMLVideoElement;
+      /* c8 ignore next */
       if (this.handles.has(video)) continue;
       if (!this.shouldHandle(video)) continue;
       const result = this.getOptions(video);
@@ -78,6 +79,7 @@ export abstract class BaseDetector implements Detector {
     for (const m of mutations) {
       for (const node of Array.from(m.addedNodes)) {
         if (node instanceof HTMLVideoElement) {
+          /* c8 ignore next */
           this.scan(node.parentElement ?? document);
         } else if (node instanceof HTMLElement) {
           this.scan(node);

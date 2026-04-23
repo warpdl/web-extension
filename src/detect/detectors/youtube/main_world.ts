@@ -8,6 +8,11 @@ const NAV_DEBOUNCE_MS = 500;
 
 let decoderCache: Decoders | null = null;
 
+/** @internal — test helper only */
+export function __resetDecoderCache(): void {
+  decoderCache = null;
+}
+
 function post(message: YtBridgeMessage): void {
   window.postMessage(message, "*");
 }
@@ -122,6 +127,7 @@ export function runMainWorld(): () => void {
 // Auto-run unless imported by tests
 declare const process: { env: Record<string, string | undefined> } | undefined;
 
+/* c8 ignore next 12 */
 if (
   typeof document !== "undefined" &&
   !(globalThis as any).__WARPDL_MAIN_WORLD_LOADED__ &&

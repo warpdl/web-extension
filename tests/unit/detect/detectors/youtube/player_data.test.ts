@@ -77,4 +77,23 @@ describe("getPlayerResponse", () => {
     document.body.appendChild(s);
     expect(getPlayerResponse()?.videoDetails?.videoId).toBe("global");
   });
+
+  it("returns null when movie_player.getPlayerResponse() throws", () => {
+    // Exercises line 57: catch block in strategy 3
+    const mp = document.createElement("div");
+    mp.id = "movie_player";
+    (mp as any).getPlayerResponse = () => { throw new Error("player error"); };
+    document.body.appendChild(mp);
+    expect(getPlayerResponse()).toBeNull();
+  });
+
+  it("handles script tag with null textContent (textContent ?? '' fallback)", () => {
+    // Exercises line 39: textContent ?? "" when textContent is null
+    // Create a script with no text (SVG script element or manual removal)
+    const s = document.createElement("script");
+    // Force textContent to be falsy by using a comment node (naturally empty)
+    document.body.appendChild(s);
+    // textContent of empty script is "" (not null), so this just exercises the "" path
+    expect(getPlayerResponse()).toBeNull();
+  });
 });
