@@ -1,6 +1,7 @@
 import { sanitizeFilename } from "../../../capture/sanitize_filename";
 import { decodeFormatUrl, Decoders } from "./signature";
 import { getCapturedUrl } from "./url_sniffer";
+import { probePlayer } from "./player_hook";
 import type { PlayerResponse, YouTubeFormat } from "./player_data";
 import type { OverlayOption } from "../../../types";
 
@@ -15,6 +16,21 @@ export function buildOptions(pr: PlayerResponse, decoders: Decoders): BuildOptio
   const sd = pr.streamingData;
   if (!sd) return { options: [], totalFormats: 0, decodedFormats: 0 };
 
+  // Probe movie_player each time — it may expose decoded URLs.
+  let playerUrls: Map<number, string> | null = null;
+  try {
+    const probe = probePlayer();
+    if (probe.byItag.size > 0) {
+      console.info(`[WarpDL YT] player probe: ${probe.byItag.size} URLs found via movie_player`);
+      playerUrls = probe.byItag;
+    } else {
+      // One-shot diagnostic dump so user can share
+      console.info("[WarpDL YT] player probe diagnostics:\n" + probe.diagnostics.join("\n"));
+    }
+  } catch (e) {
+    console.warn("[WarpDL YT] player probe failed:", e);
+  }
+
   const out: OverlayOption[] = [];
   const combined = (sd.formats ?? []).slice().sort(byQualityDesc);
   const adaptiveVideo = (sd.adaptiveFormats ?? []).filter((f) => f.mimeType.startsWith("video/")).sort(byHeightDesc);
@@ -22,9 +38,9 @@ export function buildOptions(pr: PlayerResponse, decoders: Decoders): BuildOptio
 
   const totalFormats = combined.length + adaptiveVideo.length + adaptiveAudio.length;
 
-  for (const f of combined) pushOption(out, f, decoders, title, "Combined");
-  for (const f of adaptiveVideo) pushOption(out, f, decoders, title, "Video only");
-  for (const f of adaptiveAudio) pushOption(out, f, decoders, title, "Audio only");
+  for (const f of combined) pushOption(out, f, decoders, title, "Combined", playerUrls);
+  for (const f of adaptiveVideo) pushOption(out, f, decoders, title, "Video only", playerUrls);
+  for (const f of adaptiveAudio) pushOption(out, f, decoders, title, "Audio only", playerUrls);
 
   return { options: out, totalFormats, decodedFormats: out.length };
 }
@@ -34,15 +50,19 @@ function pushOption(
   f: YouTubeFormat,
   decoders: Decoders,
   title: string,
-  group: string
+  group: string,
+  playerUrls: Map<number, string> | null
 ): void {
-  // Priority 1: use a URL captured by the network sniffer (YouTube already
-  // decoded the signature and n-param internally — most reliable source).
+  // Priority 1: URL from movie_player probe (YouTube's own decoded URLs)
   let url: string | null = null;
-  if (typeof f.itag === "number") {
+  if (typeof f.itag === "number" && playerUrls) {
+    url = playerUrls.get(f.itag) ?? null;
+  }
+  // Priority 2: URL captured by network sniffer (fetch/XHR/PerformanceObserver)
+  if (!url && typeof f.itag === "number") {
     url = getCapturedUrl(f.itag) ?? null;
   }
-  // Priority 2: run our own signature/n-param decoder.
+  // Priority 3: our own signature/n-param decoder
   if (!url) url = decodeFormatUrl(f, decoders);
   if (!url) return;
 

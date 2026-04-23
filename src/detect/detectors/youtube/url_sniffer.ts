@@ -120,11 +120,18 @@ function hookPerformanceObserver(): void {
   try {
     // Scan any resources already loaded before we started.
     const existing = performance.getEntriesByType("resource");
+    let gvCount = 0;
     for (const entry of existing) {
       const name = (entry as PerformanceResourceTiming).name;
-      if (typeof name === "string") maybeCapture(name);
+      if (typeof name === "string") {
+        if (name.includes("googlevideo.com")) gvCount++;
+        maybeCapture(name);
+      }
     }
-  } catch { /* ignore */ }
+    console.info(`[WarpDL YT] sniffer scan: ${existing.length} resources, ${gvCount} googlevideo.com`);
+  } catch (e) {
+    console.warn("[WarpDL YT] sniffer scan failed:", e);
+  }
 
   try {
     const observer = new PerformanceObserver((list) => {
