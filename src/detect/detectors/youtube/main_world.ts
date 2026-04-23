@@ -2,7 +2,13 @@ import { getPlayerResponse } from "./player_data";
 import { loadBaseJs, findBaseJsUrl, __resetMemCache } from "./base_js_loader";
 import { extractDecoders, Decoders } from "./signature";
 import { buildOptions } from "./formats";
+import { installSniffer, onUrlCaptured } from "./url_sniffer";
 import type { YtBridgeMessage, YtExtractError } from "../../../types";
+
+// Install the network sniffer as early as possible so it captures any
+// googlevideo.com URLs YouTube's player fetches (signature + n-param
+// already decoded by YouTube itself).
+installSniffer();
 
 const NAV_DEBOUNCE_MS = 500;
 
@@ -132,13 +138,32 @@ function onSpaNav(): void {
   }, NAV_DEBOUNCE_MS);
 }
 
+// Debounce sniffer-triggered refreshes so a burst of captures collapses into
+// a single formats-ready update.
+let sniffRefreshTimer: number | null = null;
+const SNIFFER_REFRESH_DEBOUNCE_MS = 400;
+
+function onSnifferCapture(): void {
+  if (sniffRefreshTimer !== null) window.clearTimeout(sniffRefreshTimer);
+  sniffRefreshTimer = window.setTimeout(() => {
+    sniffRefreshTimer = null;
+    void handleRequestFormats();
+  }, SNIFFER_REFRESH_DEBOUNCE_MS);
+}
+
 export function runMainWorld(): () => void {
   window.addEventListener("message", onBridgeMessage);
   document.addEventListener("yt-navigate-finish", onSpaNav);
+  const unsubscribeSniffer = onUrlCaptured(onSnifferCapture);
   post({ source: "warpdl-yt-main", type: "ready" });
   return () => {
     window.removeEventListener("message", onBridgeMessage);
     document.removeEventListener("yt-navigate-finish", onSpaNav);
+    unsubscribeSniffer();
+    if (sniffRefreshTimer !== null) {
+      window.clearTimeout(sniffRefreshTimer);
+      sniffRefreshTimer = null;
+    }
     if (navTimer !== null) {
       window.clearTimeout(navTimer);
       navTimer = null;

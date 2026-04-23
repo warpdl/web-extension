@@ -1,5 +1,6 @@
 import { sanitizeFilename } from "../../../capture/sanitize_filename";
 import { decodeFormatUrl, Decoders } from "./signature";
+import { getCapturedUrl } from "./url_sniffer";
 import type { PlayerResponse, YouTubeFormat } from "./player_data";
 import type { OverlayOption } from "../../../types";
 
@@ -35,8 +36,16 @@ function pushOption(
   title: string,
   group: string
 ): void {
-  const url = decodeFormatUrl(f, decoders);
+  // Priority 1: use a URL captured by the network sniffer (YouTube already
+  // decoded the signature and n-param internally — most reliable source).
+  let url: string | null = null;
+  if (typeof f.itag === "number") {
+    url = getCapturedUrl(f.itag) ?? null;
+  }
+  // Priority 2: run our own signature/n-param decoder.
+  if (!url) url = decodeFormatUrl(f, decoders);
   if (!url) return;
+
   const ext = extFromMime(f.mimeType);
   out.push({
     label: buildLabel(f),

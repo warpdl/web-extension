@@ -12,6 +12,7 @@ export interface PlayerResponse {
 }
 
 export interface YouTubeFormat {
+  itag?: number;
   url?: string;
   signatureCipher?: string;
   mimeType: string;
