@@ -73,3 +73,13 @@ export interface YouTubePlayerResponse {
   videoDetails?: YouTubeVideoDetails;
   streamingData?: YouTubeStreamingData;
 }
+
+// ── Video overlay (detect module) ──
+
+export interface OverlayOption {
+  label: string;
+  sublabel?: string;
+  url: string;
+  fileName?: string;
+  group?: string;
+}
