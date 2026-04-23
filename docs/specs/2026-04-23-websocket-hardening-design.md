@@ -574,6 +574,8 @@ Before Commit 9 lands, run this against a local daemon:
 
 If the result is unacceptable, downgrade heartbeat to TCP-keepalive-only (rely on OS-level keepalive + `onclose`; lose ~20–40 s of fast-fail detection but regain daemon compatibility). Document the outcome in the Commit 9 message. A second option if upgrade is acceptable: add a discriminator field on the daemon side in a parallel daemon-repo PR — out of scope for this spec but worth flagging.
 
+**Verification result (2026-04-23):** UNACCEPTABLE. Daemon parses every frame as a capturedDownload, producing 'unsupported protocol scheme ""' errors on empty-URL processing. Heartbeat disabled in production (`disableHeartbeat: true` in Container). Follow-up: add a message-type discriminator to the daemon WebSocket endpoint.
+
 ### 9.5 Dependency delta
 
 ```json

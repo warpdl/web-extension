@@ -62,6 +62,11 @@ export class Container {
         log: this.log.child("daemon"),
         clock: this.clock,
         wsFactory: this.wsFactory,
+        // Heartbeat disabled: the daemon's root WebSocket endpoint parses every
+        // frame as a capturedDownload, so {"type":"ping"} produces spurious
+        // empty-URL download errors in the daemon log. Revisit when the daemon
+        // adds a message-type discriminator.
+        disableHeartbeat: true,
       });
       this.daemon.setUrl(this.settings.daemonUrl);
       this.daemon.start();
