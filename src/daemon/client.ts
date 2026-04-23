@@ -36,6 +36,10 @@ export class DaemonClient {
   private consecutiveFailures = 0;
   private breakerEnabled: boolean;
   private breakerThreshold: number;
+  private heartbeatEnabled: boolean;
+  private heartbeatMs: number;
+  private heartbeatTimer: number | null = null;
+  private prevBufferedAmount = 0;
 
   constructor(deps: Deps) {
     this.bus = deps.bus;
@@ -44,6 +48,8 @@ export class DaemonClient {
     this.wsFactory = deps.wsFactory;
     this.breakerEnabled = !(deps.disableBreaker ?? false);
     this.breakerThreshold = deps.breakerThreshold ?? 10;
+    this.heartbeatEnabled = !(deps.disableHeartbeat ?? false);
+    this.heartbeatMs = deps.heartbeatMs ?? 20_000;
   }
 
   get state(): State {
@@ -131,10 +137,21 @@ export class DaemonClient {
   private onEnter(state: State, cause?: string): void {
     switch (state) {
       case "CONNECTING": this.openSocket(); break;
-      case "OPEN":       this.consecutiveFailures = 0; break;
-      case "RECONNECTING": this.scheduleReconnect(cause); break;
-      case "DISABLED":   this.teardown(); break;
-      case "IDLE":       /* already torn down by stop() */ break;
+      case "OPEN":
+        this.consecutiveFailures = 0;
+        this.startHeartbeat();
+        break;
+      case "RECONNECTING":
+        this.stopHeartbeat();
+        this.scheduleReconnect(cause);
+        break;
+      case "DISABLED":
+        this.stopHeartbeat();
+        this.teardown();
+        break;
+      case "IDLE":
+        this.stopHeartbeat();
+        break;
     }
   }
 
@@ -175,7 +192,39 @@ export class DaemonClient {
     }, delay);
   }
 
+  private startHeartbeat(): void {
+    if (!this.heartbeatEnabled) return;
+    this.prevBufferedAmount = 0;
+    this.heartbeatTimer = this.clock.setInterval(() => this.heartbeatTick(), this.heartbeatMs);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      this.clock.clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private heartbeatTick(): void {
+    if (this._state !== "OPEN" || this.socket === null) return;
+    const buf = this.socket.bufferedAmount;
+    if (buf > 0 && this.prevBufferedAmount > 0) {
+      this.log.warn("heartbeat_stalled", { buffered: buf });
+      try { this.socket.close(); } catch { /* noop */ }
+      this.transition("RECONNECTING", "heartbeat_stalled");
+      return;
+    }
+    this.prevBufferedAmount = buf;
+    try {
+      this.socket.send('{"type":"ping"}');
+    } catch (e) {
+      this.log.warn("heartbeat_send_failed", { err: String(e) });
+      this.transition("RECONNECTING", "heartbeat_send_throw");
+    }
+  }
+
   private teardown(): void {
+    this.stopHeartbeat();
     if (this.reconnectTimer !== null) {
       this.clock.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
