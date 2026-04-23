@@ -120,7 +120,13 @@ export function runMainWorld(): () => void {
 }
 
 // Auto-run unless imported by tests
-if (typeof document !== "undefined" && !(globalThis as any).__WARPDL_MAIN_WORLD_LOADED__) {
+declare const process: { env: Record<string, string | undefined> } | undefined;
+
+if (
+  typeof document !== "undefined" &&
+  !(globalThis as any).__WARPDL_MAIN_WORLD_LOADED__ &&
+  (typeof process === "undefined" || process.env.NODE_ENV !== "test")
+) {
   (globalThis as any).__WARPDL_MAIN_WORLD_LOADED__ = true;
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => { runMainWorld(); });
