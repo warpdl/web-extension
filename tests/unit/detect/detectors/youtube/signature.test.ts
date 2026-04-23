@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractDecoders, decodeFormatUrl } from "../../../../../src/detect/detectors/youtube/signature";
+import { extractDecoders, decodeFormatUrl, type Decoders } from "../../../../../src/detect/detectors/youtube/signature";
 
 // Synthetic base.js mimicking YouTube's structure. Uses a reversible signature
 // function (just reverses the string) and an n-decoder (uppercase). These are
@@ -82,5 +82,52 @@ describe("decodeFormatUrl", () => {
     const result = decodeFormatUrl({ url: "https://a.com/v.mp4?n=abc" } as any, badDecoders);
     // The format URL is still returned but with original n (best-effort)
     expect(result).toBe("https://a.com/v.mp4?n=abc");
+  });
+
+  it("decodeFormatUrl returns null when signature decoder throws", () => {
+    const throwingDecoders: Decoders = {
+      signature: () => { throw new Error("sig fail"); },
+      nParam: (n) => n,
+    };
+    const cipher = "s=abc&sp=sig&url=" + encodeURIComponent("https://a/v.mp4");
+    const result = decodeFormatUrl({ signatureCipher: cipher } as any, throwingDecoders);
+    expect(result).toBeNull();
+  });
+
+  it("decodeFormatUrl returns null when signatureCipher lacks 's' field", () => {
+    const cipher = "sp=sig&url=" + encodeURIComponent("https://a/v.mp4");
+    const result = decodeFormatUrl({ signatureCipher: cipher } as any, { signature: (s) => s, nParam: (n) => n });
+    expect(result).toBeNull();
+  });
+
+  it("decodeFormatUrl returns null when signatureCipher lacks 'url' field", () => {
+    const cipher = "s=abc&sp=sig";
+    const result = decodeFormatUrl({ signatureCipher: cipher } as any, { signature: (s) => s, nParam: (n) => n });
+    expect(result).toBeNull();
+  });
+
+  it("decodeFormatUrl returns url as-is when URL parse fails (malformed url)", () => {
+    // new URL("not a url") throws in Node.js; the implementation catches and returns as-is.
+    const format = { url: "not a url" } as any;
+    const result = decodeFormatUrl(format, { signature: (s) => s, nParam: (n) => n });
+    expect(result).toBe("not a url");
+  });
+});
+
+describe("extractDecoders - edge cases", () => {
+  it("extractDecoders handles function body that calls a helper not defined elsewhere", () => {
+    // Helper object reference in body but no var definition — helperObjSrc stays empty.
+    const baseJs = `
+      var sigDecode=function(a){a=a.split("");UndefinedHelper.xb(a,1);return a.join("")};
+      a.set("alr","yes");c&&(c=sigDecode(decodeURIComponent(c)));
+      var nDecode=function(b){return b};
+      &&(b=a.get("n"))&&(b=nDecode(b));
+    `;
+    // The extractor should still build the function (execution will fail at runtime
+    // when UndefinedHelper is referenced, but buildFunction itself should not throw).
+    const decoders = extractDecoders(baseJs);
+    expect(decoders.signature).toBeDefined();
+    // Calling it will throw because UndefinedHelper is undefined.
+    expect(() => decoders.signature("abc")).toThrow();
   });
 });

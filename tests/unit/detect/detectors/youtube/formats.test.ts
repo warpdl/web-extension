@@ -17,7 +17,13 @@ function mk(partial: Partial<PlayerResponse>): PlayerResponse {
 
 describe("buildOptions", () => {
   it("returns empty array when streamingData missing", () => {
-    expect(buildOptions(mk({}), passthroughDecoders)).toEqual([]);
+    expect(buildOptions(mk({}), passthroughDecoders).options).toEqual([]);
+  });
+
+  it("returns zero counts when streamingData missing", () => {
+    const result = buildOptions(mk({}), passthroughDecoders);
+    expect(result.totalFormats).toBe(0);
+    expect(result.decodedFormats).toBe(0);
   });
 
   it("generates combined option from formats array", () => {
@@ -28,7 +34,7 @@ describe("buildOptions", () => {
         ],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders);
+    const { options: opts } = buildOptions(pr, passthroughDecoders);
     expect(opts).toHaveLength(1);
     expect(opts[0].group).toBe("Combined");
     expect(opts[0].label).toContain("720p");
@@ -46,7 +52,7 @@ describe("buildOptions", () => {
         ],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders);
+    const { options: opts } = buildOptions(pr, passthroughDecoders);
     const groups = Array.from(new Set(opts.map((o) => o.group)));
     expect(groups).toContain("Video only");
     expect(groups).toContain("Audio only");
@@ -61,7 +67,7 @@ describe("buildOptions", () => {
         ],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders).filter((o) => o.group === "Combined");
+    const opts = buildOptions(pr, passthroughDecoders).options.filter((o) => o.group === "Combined");
     expect(opts[0].label).toContain("720p");
     expect(opts[1].label).toContain("360p");
   });
@@ -75,7 +81,7 @@ describe("buildOptions", () => {
         ],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders).filter((o) => o.group === "Video only");
+    const opts = buildOptions(pr, passthroughDecoders).options.filter((o) => o.group === "Video only");
     expect(opts[0].label).toContain("1080p");
     expect(opts[1].label).toContain("480p");
   });
@@ -88,7 +94,7 @@ describe("buildOptions", () => {
         ],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders);
+    const { options: opts } = buildOptions(pr, passthroughDecoders);
     expect(opts[0].label).not.toContain("MB");
     expect(opts[0].label).not.toContain("KB");
   });
@@ -100,7 +106,7 @@ describe("buildOptions", () => {
         formats: [{ url: "https://a/x.mp4", mimeType: "video/mp4", qualityLabel: "720p" }],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders);
+    const { options: opts } = buildOptions(pr, passthroughDecoders);
     expect(opts[0].fileName).toContain("My Test Video");
     expect(opts[0].fileName).toMatch(/\.mp4$/);
   });
@@ -113,12 +119,15 @@ describe("buildOptions", () => {
         ],
       },
     });
-    expect(buildOptions(pr, passthroughDecoders)).toEqual([]);
+    expect(buildOptions(pr, passthroughDecoders).options).toEqual([]);
   });
 
   it("handles empty formats gracefully", () => {
     const pr = mk({ streamingData: { formats: [], adaptiveFormats: [] } });
-    expect(buildOptions(pr, passthroughDecoders)).toEqual([]);
+    const result = buildOptions(pr, passthroughDecoders);
+    expect(result.options).toEqual([]);
+    expect(result.totalFormats).toBe(0);
+    expect(result.decodedFormats).toBe(0);
   });
 
   it("labels audio-only with audioQuality", () => {
@@ -129,7 +138,76 @@ describe("buildOptions", () => {
         ],
       },
     });
-    const opts = buildOptions(pr, passthroughDecoders);
+    const { options: opts } = buildOptions(pr, passthroughDecoders);
     expect(opts[0].label).toContain("AUDIO_QUALITY_HIGH");
+  });
+
+  // --- New coverage tests ---
+
+  it("formats size in GB for very large files", () => {
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/big.mp4", mimeType: "video/mp4", qualityLabel: "2160p", contentLength: "2147483648" }, // 2 GB
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    expect(options[0].label).toContain("2.0 GB");
+  });
+
+  it("formats size in KB for sub-MB files", () => {
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/small.mp4", mimeType: "video/mp4", qualityLabel: "144p", contentLength: "524288" }, // 512 KB
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    expect(options[0].label).toContain("512 KB");
+  });
+
+  it("formats size in bytes for tiny files", () => {
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/tiny.mp4", mimeType: "video/mp4", qualityLabel: "144p", contentLength: "500" },
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    expect(options[0].label).toContain("500 B");
+  });
+
+  it("sorts audio-only by quality HIGH > MEDIUM > LOW", () => {
+    const pr = mk({
+      streamingData: {
+        adaptiveFormats: [
+          { url: "https://a/low.m4a", mimeType: "audio/mp4", audioQuality: "AUDIO_QUALITY_LOW" },
+          { url: "https://a/high.m4a", mimeType: "audio/mp4", audioQuality: "AUDIO_QUALITY_HIGH" },
+          { url: "https://a/med.m4a", mimeType: "audio/mp4", audioQuality: "AUDIO_QUALITY_MEDIUM" },
+        ],
+      },
+    });
+    const { options } = buildOptions(pr, passthroughDecoders);
+    const audio = options.filter((o) => o.group === "Audio only");
+    expect(audio[0].label).toContain("HIGH");
+    expect(audio[1].label).toContain("MEDIUM");
+    expect(audio[2].label).toContain("LOW");
+  });
+
+  it("returns totalFormats and decodedFormats counts", () => {
+    const pr = mk({
+      streamingData: {
+        formats: [
+          { url: "https://a/ok.mp4", mimeType: "video/mp4", qualityLabel: "720p" },
+          { mimeType: "video/mp4", qualityLabel: "1080p" }, // no url, no cipher — will be dropped
+        ],
+      },
+    });
+    const result = buildOptions(pr, passthroughDecoders);
+    expect(result.totalFormats).toBe(2);
+    expect(result.decodedFormats).toBe(1);
   });
 });

@@ -3,21 +3,29 @@ import { decodeFormatUrl, Decoders } from "./signature";
 import type { PlayerResponse, YouTubeFormat } from "./player_data";
 import type { OverlayOption } from "../../../types";
 
-export function buildOptions(pr: PlayerResponse, decoders: Decoders): OverlayOption[] {
+export interface BuildOptionsResult {
+  options: OverlayOption[];
+  totalFormats: number;    // count of raw format entries considered
+  decodedFormats: number;  // count of successfully-decoded entries
+}
+
+export function buildOptions(pr: PlayerResponse, decoders: Decoders): BuildOptionsResult {
   const title = pr.videoDetails?.title ?? "video";
   const sd = pr.streamingData;
-  if (!sd) return [];
+  if (!sd) return { options: [], totalFormats: 0, decodedFormats: 0 };
 
   const out: OverlayOption[] = [];
   const combined = (sd.formats ?? []).slice().sort(byQualityDesc);
   const adaptiveVideo = (sd.adaptiveFormats ?? []).filter((f) => f.mimeType.startsWith("video/")).sort(byHeightDesc);
   const adaptiveAudio = (sd.adaptiveFormats ?? []).filter((f) => f.mimeType.startsWith("audio/")).sort(byAudioQualityDesc);
 
+  const totalFormats = combined.length + adaptiveVideo.length + adaptiveAudio.length;
+
   for (const f of combined) pushOption(out, f, decoders, title, "Combined");
   for (const f of adaptiveVideo) pushOption(out, f, decoders, title, "Video only");
   for (const f of adaptiveAudio) pushOption(out, f, decoders, title, "Audio only");
 
-  return out;
+  return { options: out, totalFormats, decodedFormats: out.length };
 }
 
 function pushOption(
