@@ -26,27 +26,31 @@ describe("extractDecoders", () => {
     const input = "abcdef";
     // Expected: reverse → "fedcba"; swap[0] and swap[3%6=3] → "cedfba"
     // (We don't need to verify exact algorithm here; just that it executes.)
-    const result = decoders.signature(input);
+    const result = decoders.signature!(input);
     expect(typeof result).toBe("string");
     expect(result.length).toBe(input.length);
   });
 
   it("extracted n-decoder uppercases (synthetic algorithm)", () => {
     const decoders = extractDecoders(syntheticBaseJs);
-    expect(decoders.nParam("abc")).toBe("ABC");
+    expect(decoders.nParam!("abc")).toBe("ABC");
   });
 
-  it("throws when signature function cannot be located", () => {
-    expect(() => extractDecoders("// empty base.js")).toThrow(/signature_extract_failed/);
+  it("returns null signature when function cannot be located", () => {
+    const decoders = extractDecoders("// empty base.js");
+    expect(decoders.signature).toBeNull();
+    expect(decoders.nParam).toBeNull();
   });
 
-  it("throws when n-decoder cannot be located", () => {
+  it("returns null nParam when n-decoder cannot be located but signature extracted", () => {
     const noN = `
       var Xz={xb:function(a,b){a.reverse()}};
       var sigDecode=function(a){a=a.split("");Xz.xb(a,1);return a.join("")};
       a.set("alr","yes");c&&(c=sigDecode(decodeURIComponent(c)));
     `;
-    expect(() => extractDecoders(noN)).toThrow(/n_extract_failed/);
+    const decoders = extractDecoders(noN);
+    expect(decoders.signature).not.toBeNull();
+    expect(decoders.nParam).toBeNull();
   });
 });
 
@@ -142,20 +146,20 @@ describe("extractDecoders - edge cases", () => {
     // The extractor should still build the function (execution will fail at runtime
     // when UndefinedHelper is referenced, but buildFunction itself should not throw).
     const decoders = extractDecoders(baseJs);
-    expect(decoders.signature).toBeDefined();
+    expect(decoders.signature).not.toBeNull();
     // Calling it will throw because UndefinedHelper is undefined.
-    expect(() => decoders.signature("abc")).toThrow();
+    expect(() => decoders.signature!("abc")).toThrow();
   });
 
-  it("throws function_build_failed when new Function construction fails (syntax error in body)", () => {
-    // Exercises lines 75-77: catch block in buildDecodeFunction when new Function throws
-    // Inject a function body with a syntax error that causes new Function to throw
+  it("returns null signature when new Function construction fails (syntax error in body)", () => {
+    // Function body has a syntax error; buildFunction catches and returns null.
     const baseJs = `
       var sigDecode=function(a){ ===SYNTAX_ERROR=== };
       a.set("alr","yes");c&&(c=sigDecode(decodeURIComponent(c)));
       var nDecode=function(b){return b};
       &&(b=a.get("n"))&&(b=nDecode(b));
     `;
-    expect(() => extractDecoders(baseJs)).toThrow(/function_build_failed|signature_extract_failed/);
+    const decoders = extractDecoders(baseJs);
+    expect(decoders.signature).toBeNull();
   });
 });

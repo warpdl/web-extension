@@ -280,8 +280,9 @@ describe("runMainWorld", () => {
     expect(msg.reason).toBe("base_js_fetch_failed");
   });
 
-  it("emits signature_extract_failed when extractDecoders throws with that message", async () => {
-    // Exercises the signature_extract_failed branch in the extractDecoders catch block
+  it("proceeds with direct-URL formats when signature decoder unavailable", async () => {
+    // When extractDecoders returns null signature, signatureCipher formats are dropped
+    // but direct-URL formats still produce working options.
     (window as any).ytInitialPlayerResponse = {
       videoDetails: { videoId: "abc", title: "T", lengthSeconds: "1", author: "A" },
       streamingData: {
@@ -289,82 +290,47 @@ describe("runMainWorld", () => {
       },
     };
     const script = document.createElement("script");
-    script.src = "https://www.youtube.com/s/player/sigfail/player_ias.vflset/en_US/base.js";
+    script.src = "https://www.youtube.com/s/player/nosig/player_ias.vflset/en_US/base.js";
     document.head.appendChild(script);
     (globalThis as any).fetch = vi.fn(async () => ({
       ok: true,
-      text: async () => "// minimal base.js",
+      text: async () => "// minimal base.js that has neither sig nor n decoder",
     }));
 
-    const spy = vi.spyOn(signature, "extractDecoders").mockImplementationOnce(() => {
-      throw new Error("signature_extract_failed: could not find function");
-    });
-
     cleanup = runMainWorld();
-    const errMsg = listenForMessage("warpdl-yt-main", "formats-error");
+    const ready = listenForMessage("warpdl-yt-main", "formats-ready");
     window.postMessage({ source: "warpdl-yt-content", type: "request-formats" }, "*");
-    const msg = await errMsg;
-    expect(msg.type).toBe("formats-error");
-    expect(msg.reason).toBe("signature_extract_failed");
-    spy.mockRestore();
+    const msg = await ready;
+    expect(msg.type).toBe("formats-ready");
+    expect(msg.options.length).toBe(1);
   });
 
-  it("emits n_extract_failed when extractDecoders throws with that message", async () => {
-    // Exercises the n_extract_failed branch in the extractDecoders catch block
+  it("drops signatureCipher formats but keeps direct-URL formats when signature decoder is null", async () => {
     (window as any).ytInitialPlayerResponse = {
       videoDetails: { videoId: "abc", title: "T", lengthSeconds: "1", author: "A" },
       streamingData: {
-        formats: [{ url: "https://a/x.mp4", mimeType: "video/mp4", qualityLabel: "720p" }],
+        formats: [
+          { url: "https://a/direct.mp4", mimeType: "video/mp4", qualityLabel: "720p" },
+          { signatureCipher: "s=abc&sp=sig&url=https%3A%2F%2Fa%2Fciph.mp4", mimeType: "video/mp4", qualityLabel: "1080p" },
+        ],
       },
     };
     const script = document.createElement("script");
-    script.src = "https://www.youtube.com/s/player/nfail/player_ias.vflset/en_US/base.js";
+    script.src = "https://www.youtube.com/s/player/partial/player_ias.vflset/en_US/base.js";
     document.head.appendChild(script);
     (globalThis as any).fetch = vi.fn(async () => ({
       ok: true,
-      text: async () => "// minimal base.js",
+      text: async () => "// no decoders",
     }));
 
-    const spy = vi.spyOn(signature, "extractDecoders").mockImplementationOnce(() => {
-      throw new Error("n_extract_failed: could not find n param function");
-    });
-
     cleanup = runMainWorld();
-    const errMsg = listenForMessage("warpdl-yt-main", "formats-error");
+    const ready = listenForMessage("warpdl-yt-main", "formats-ready");
     window.postMessage({ source: "warpdl-yt-content", type: "request-formats" }, "*");
-    const msg = await errMsg;
-    expect(msg.type).toBe("formats-error");
-    expect(msg.reason).toBe("n_extract_failed");
-    spy.mockRestore();
-  });
-
-  it("emits unknown error when extractDecoders throws with unrecognized message", async () => {
-    // Exercises the else branch (postError("unknown")) in the extractDecoders catch block
-    (window as any).ytInitialPlayerResponse = {
-      videoDetails: { videoId: "abc", title: "T", lengthSeconds: "1", author: "A" },
-      streamingData: {
-        formats: [{ url: "https://a/x.mp4", mimeType: "video/mp4", qualityLabel: "720p" }],
-      },
-    };
-    const script = document.createElement("script");
-    script.src = "https://www.youtube.com/s/player/unknwn/player_ias.vflset/en_US/base.js";
-    document.head.appendChild(script);
-    (globalThis as any).fetch = vi.fn(async () => ({
-      ok: true,
-      text: async () => "// minimal base.js",
-    }));
-
-    const spy = vi.spyOn(signature, "extractDecoders").mockImplementationOnce(() => {
-      throw new Error("some completely unknown parse failure");
-    });
-
-    cleanup = runMainWorld();
-    const errMsg = listenForMessage("warpdl-yt-main", "formats-error");
-    window.postMessage({ source: "warpdl-yt-content", type: "request-formats" }, "*");
-    const msg = await errMsg;
-    expect(msg.type).toBe("formats-error");
-    expect(msg.reason).toBe("unknown");
-    spy.mockRestore();
+    const msg = await ready;
+    // 1 of 2 formats decoded = exactly 50% — our threshold is strict < 0.5, so this passes as formats-ready
+    expect(msg.type).toBe("formats-ready");
+    expect(msg.options.length).toBe(1);
+    expect(msg.options[0].label).toContain("720p");
   });
 
   it("emits formats-ready with empty videoId and title when videoDetails is missing", async () => {
@@ -419,8 +385,9 @@ describe("runMainWorld", () => {
     expect(errorReceived).toBe(false);
   });
 
-  it("emits unknown error when extractDecoders throws a non-Error", async () => {
-    // Exercises the String(e) branch when a non-Error is thrown
+  it("defensively uses empty decoders when extractDecoders throws unexpectedly", async () => {
+    // extractDecoders was redesigned not to throw, but the defensive catch in main_world
+    // falls back to { signature: null, nParam: null } if the impl ever changes back.
     (window as any).ytInitialPlayerResponse = {
       videoDetails: { videoId: "abc", title: "T", lengthSeconds: "1", author: "A" },
       streamingData: {
@@ -441,11 +408,12 @@ describe("runMainWorld", () => {
     });
 
     cleanup = runMainWorld();
-    const errMsg = listenForMessage("warpdl-yt-main", "formats-error");
+    const ready = listenForMessage("warpdl-yt-main", "formats-ready");
     window.postMessage({ source: "warpdl-yt-content", type: "request-formats" }, "*");
-    const msg = await errMsg;
-    expect(msg.type).toBe("formats-error");
-    expect(msg.reason).toBe("unknown");
+    const msg = await ready;
+    // Defensive catch → empty decoders → direct-URL format decodes successfully
+    expect(msg.type).toBe("formats-ready");
+    expect(msg.options.length).toBe(1);
     spy.mockRestore();
   });
 });

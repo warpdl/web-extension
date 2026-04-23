@@ -1,41 +1,65 @@
 import type { YouTubeFormat } from "./player_data";
 
 export interface Decoders {
-  signature: (s: string) => string;
-  nParam: (n: string) => string;
+  signature: ((s: string) => string) | null;
+  nParam: ((n: string) => string) | null;
 }
 
-// Known call-site patterns that identify the signature function name.
-// Ordered most-specific → most-general. First match wins.
+/**
+ * Call-site patterns that identify the signature function name.
+ * Ordered most-specific → most-general. First match wins.
+ * Based on yt-dlp's evolving pattern set — add new patterns when YouTube changes.
+ */
 const SIG_NAME_PATTERNS: RegExp[] = [
-  /\.set\("alr","yes"\)[^;]*?c=([a-zA-Z_$][\w$]*?)\(decodeURIComponent\(c\)\)/,
-  /;c&&\(c=([a-zA-Z_$][\w$]*?)\(decodeURIComponent\(c\)\)/,
-  /\b([a-zA-Z_$][\w$]*?)\s*=\s*function\s*\([a-zA-Z_$][\w$]*?\)\s*\{[a-zA-Z_$][\w$]*?=[a-zA-Z_$][\w$]*?\.split\(""\)[\s\S]+?\.join\(""\)\}/,
+  /\.set\("alr","yes"\)[^;]*?c=([a-zA-Z_$][\w$]*)\(decodeURIComponent\(c\)\)/,
+  /;c&&\(c=([a-zA-Z_$][\w$]*)\(decodeURIComponent\(c\)\)/,
+  /\bm=([a-zA-Z_$][\w$]*)\(decodeURIComponent\(h\.s\)\)/,
+  /\bc&&\(c=([a-zA-Z_$][\w$]*)\(decodeURIComponent\(c\)\)/,
+  // Definition patterns
+  /\b([a-zA-Z_$][\w$]*)\s*=\s*function\s*\(\s*a\s*\)\s*\{\s*a\s*=\s*a\.split\(\s*""\s*\)[\s\S]+?return\s+a\.join\(\s*""\s*\)\s*\}/,
+  /([a-zA-Z_$][\w$]*)\s*=\s*function\s*\(\s*([a-zA-Z_$][\w$]*)\s*\)\s*\{\s*\2\s*=\s*\2\.split\(\s*""\s*\)\s*;/,
+  /\b([a-zA-Z_$][\w$]*)\s*=\s*function\s*\([a-zA-Z_$][\w$]*?\)\s*\{[a-zA-Z_$][\w$]*?=[a-zA-Z_$][\w$]*?\.split\(""\)[\s\S]+?\.join\(""\)\}/,
 ];
 
 const N_NAME_PATTERNS: RegExp[] = [
-  /&&\(b=a\.get\("n"\)\)&&\(b=([a-zA-Z_$][\w$]*?)\(b\)/,
-  /\.get\("n"\)[^)]*\)&&\(b?=([a-zA-Z_$][\w$]*?)\(/,
-  /([a-zA-Z_$][\w$]*?)=function\(a\)\{a=a\.split\(""\);[\s\S]+?\.join\(""\)\}/,
+  /&&\(b=a\.get\("n"\)\)&&\(b=([a-zA-Z_$][\w$]*)(?:\[\d+\])?\(b\)/,
+  /\.get\("n"\)\)&&\(b=([a-zA-Z_$][\w$]*)(?:\[\d+\])?\(b\)/,
+  /\.get\("n"\)[^)]*\)&&\(b?=([a-zA-Z_$][\w$]*)\(/,
+  /([a-zA-Z_$][\w$]*)=function\(a\)\{a=a\.split\(""\);[\s\S]+?\.join\(""\)\}/,
 ];
 
+/**
+ * Attempts to extract signature and n-param decoders from base.js.
+ * Returns a Decoders object where either or both may be null if extraction fails.
+ * Does NOT throw — partial extraction is better than none (direct-URL formats still work
+ * even without a signature decoder, and n-param failure just means throttled downloads).
+ */
 export function extractDecoders(baseJs: string): Decoders {
-  const sigName = tryPatterns(baseJs, SIG_NAME_PATTERNS);
-  if (!sigName) throw new Error("signature_extract_failed: name not found");
-  const sig = buildFunction(baseJs, sigName, "s");
+  let signature: ((s: string) => string) | null = null;
+  let nParam: ((n: string) => string) | null = null;
 
-  const nName = tryPatternsExcluding(baseJs, N_NAME_PATTERNS, sigName);
-  if (!nName) throw new Error("n_extract_failed: name not found");
-  const nFn = buildFunction(baseJs, nName, "n");
+  const sigName = tryPatterns(baseJs, SIG_NAME_PATTERNS, null);
+  if (sigName) {
+    try {
+      signature = buildFunction(baseJs, sigName, "s");
+    } catch {
+      signature = null;
+    }
+  }
 
-  return { signature: sig, nParam: nFn };
+  const nName = tryPatterns(baseJs, N_NAME_PATTERNS, sigName);
+  if (nName) {
+    try {
+      nParam = buildFunction(baseJs, nName, "n");
+    } catch {
+      nParam = null;
+    }
+  }
+
+  return { signature, nParam };
 }
 
-function tryPatterns(text: string, patterns: RegExp[]): string | null {
-  return tryPatternsExcluding(text, patterns, null);
-}
-
-function tryPatternsExcluding(text: string, patterns: RegExp[], exclude: string | null): string | null {
+function tryPatterns(text: string, patterns: RegExp[], exclude: string | null): string | null {
   for (const p of patterns) {
     const m = text.match(p);
     if (m?.[1] && m[1] !== exclude) return m[1];
@@ -80,6 +104,9 @@ function buildFunction(baseJs: string, name: string, argName: string): (x: strin
 export function decodeFormatUrl(format: YouTubeFormat, decoders: Decoders): string | null {
   let url: string;
   if (format.signatureCipher) {
+    // Without a signature decoder, signatureCipher formats are unusable.
+    if (!decoders.signature) return null;
+
     const params = new URLSearchParams(format.signatureCipher);
     const s = params.get("s");
     const sp = params.get("sp") ?? "sig";
@@ -98,21 +125,24 @@ export function decodeFormatUrl(format: YouTubeFormat, decoders: Decoders): stri
     return null;
   }
 
-  // n-param transform (best-effort)
-  try {
-    const parsed = new URL(url);
-    const n = parsed.searchParams.get("n");
-    if (n) {
-      try {
-        const nDecoded = decoders.nParam(n);
-        parsed.searchParams.set("n", nDecoded);
-        url = parsed.toString();
-      } catch {
-        // Leave n untouched; url is still usable but may be throttled.
+  // n-param transform (best-effort). If no n-decoder or it throws, leave n untouched;
+  // the URL is still usable but downloads will be throttled to ~50 KB/s by YouTube.
+  if (decoders.nParam) {
+    try {
+      const parsed = new URL(url);
+      const n = parsed.searchParams.get("n");
+      if (n) {
+        try {
+          const nDecoded = decoders.nParam(n);
+          parsed.searchParams.set("n", nDecoded);
+          url = parsed.toString();
+        } catch {
+          // Leave n untouched.
+        }
       }
+    } catch {
+      // Malformed URL; return as-is.
     }
-  } catch {
-    // Malformed URL; return as-is.
   }
   return url;
 }

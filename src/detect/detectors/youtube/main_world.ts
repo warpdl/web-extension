@@ -68,13 +68,15 @@ async function handleRequestFormats(): Promise<void> {
   try {
     if (!decoderCache) decoderCache = extractDecoders(baseJs);
     decoders = decoderCache;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("signature_extract_failed")) postError("signature_extract_failed", videoId);
-    else if (msg.includes("n_extract_failed")) postError("n_extract_failed", videoId);
-    else postError("unknown", videoId);
-    return;
+  } catch {
+    // extractDecoders now never throws — it returns partial Decoders.
+    // This catch is defensive only.
+    decoders = { signature: null, nParam: null };
   }
+
+  // Diagnostic warnings — the pipeline continues regardless.
+  if (!decoders.signature) console.warn("[WarpDL YT] signature decoder unavailable; signatureCipher formats will be skipped");
+  if (!decoders.nParam) console.warn("[WarpDL YT] n-param decoder unavailable; downloads may be throttled");
 
   let result;
   try {
