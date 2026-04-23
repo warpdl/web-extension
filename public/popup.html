@@ -5,7 +5,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 320px;
+      width: 340px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       font-size: 13px;
       background: #1a1a2e;
@@ -13,129 +13,100 @@
       padding: 16px;
     }
     .header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 16px;
-      padding-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 16px; padding-bottom: 12px;
       border-bottom: 1px solid #2a2a4a;
     }
-    .header h1 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #fff;
-    }
+    .header h1 { font-size: 16px; font-weight: 600; color: #fff; }
     .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #ff4444;
-      flex-shrink: 0;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #888; flex-shrink: 0;
     }
     .status-dot.connected { background: #44ff44; }
-    .status-text {
-      font-size: 11px;
-      color: #999;
-      margin-left: auto;
+    .status-dot.connecting { background: #ffaa44; }
+    .status-dot.disabled { background: #ff4444; }
+    .status-text { font-size: 11px; color: #aaa; margin-left: auto; }
+
+    .banner {
+      padding: 8px 10px; border-radius: 6px; margin-bottom: 12px;
+      font-size: 12px;
     }
-    .field {
-      margin-bottom: 12px;
-    }
+    .banner.error { background: #441a1a; color: #ffb0b0; }
+    .banner.warn { background: #443f1a; color: #ffe0a0; }
+    .banner.info { background: #1a2a44; color: #aad0ff; }
+    .banner button { margin-left: 8px; padding: 3px 10px; font-size: 11px; }
+
+    .field { margin-bottom: 12px; }
     .field label {
-      display: block;
-      font-size: 11px;
-      color: #aaa;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      display: block; font-size: 11px; color: #aaa; margin-bottom: 4px;
+      text-transform: uppercase; letter-spacing: 0.5px;
     }
     .field input {
-      width: 100%;
-      padding: 8px 10px;
-      background: #16213e;
-      border: 1px solid #2a2a4a;
-      border-radius: 6px;
-      color: #e0e0e0;
-      font-size: 13px;
-      outline: none;
+      width: 100%; padding: 8px 10px; background: #16213e;
+      border: 1px solid #2a2a4a; border-radius: 6px;
+      color: #e0e0e0; font-size: 13px; outline: none;
     }
-    .field input:focus {
-      border-color: #5a5aff;
-    }
+    .field input:focus { border-color: #5a5aff; }
+    .field .error-msg { color: #ff7070; font-size: 11px; margin-top: 4px; min-height: 14px; }
+
     .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
-      padding: 8px 0;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; padding: 8px 0;
     }
-    .toggle-row label {
-      font-size: 13px;
-    }
-    .toggle {
-      position: relative;
-      width: 40px;
-      height: 22px;
-    }
-    .toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
+    .toggle { position: relative; width: 40px; height: 22px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
     .toggle .slider {
-      position: absolute;
-      cursor: pointer;
+      position: absolute; cursor: pointer;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: #333;
-      border-radius: 22px;
-      transition: 0.2s;
+      background: #333; border-radius: 22px; transition: 0.2s;
     }
     .toggle .slider::before {
-      content: "";
-      position: absolute;
-      height: 16px;
-      width: 16px;
-      left: 3px;
-      bottom: 3px;
-      background: #fff;
-      border-radius: 50%;
+      content: ""; position: absolute; height: 16px; width: 16px;
+      left: 3px; bottom: 3px; background: #fff; border-radius: 50%;
       transition: 0.2s;
     }
     .toggle input:checked + .slider { background: #5a5aff; }
     .toggle input:checked + .slider::before { transform: translateX(18px); }
+
     button {
-      width: 100%;
-      padding: 8px 12px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: opacity 0.15s;
-      background: #5a5aff;
-      color: #fff;
+      padding: 8px 12px; border: none; border-radius: 6px;
+      font-size: 13px; cursor: pointer; font-weight: 500;
+      background: #5a5aff; color: #fff;
     }
     button:hover { opacity: 0.85; }
-    .feedback {
-      text-align: center;
-      font-size: 11px;
-      margin-top: 8px;
-      min-height: 16px;
-      color: #44ff44;
-    }
+    button.secondary { background: #333; }
+
+    .feedback { text-align: center; font-size: 11px; margin-top: 8px; min-height: 16px; color: #44ff44; }
     .feedback.error { color: #ff4444; }
+
+    .diag {
+      display: none; margin-top: 16px; padding-top: 12px;
+      border-top: 1px solid #2a2a4a; font-size: 11px;
+    }
+    .diag.visible { display: block; }
+    .diag pre {
+      max-height: 200px; overflow-y: auto; background: #0f0f1f;
+      padding: 8px; border-radius: 4px; font-family: monospace;
+      white-space: pre-wrap; font-size: 10px; color: #aaa;
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>WarpDL</h1>
+    <h1 id="title">WarpDL</h1>
     <div id="status-dot" class="status-dot"></div>
-    <span id="status-text" class="status-text">Disconnected</span>
+    <span id="status-text" class="status-text">—</span>
+  </div>
+
+  <div id="banner" class="banner" style="display:none;">
+    <span id="banner-text"></span>
+    <button id="btn-retry" style="display:none;">Retry</button>
   </div>
 
   <div class="field">
     <label>Daemon Address</label>
     <input type="text" id="daemon-url" placeholder="localhost:3850">
+    <div id="url-error" class="error-msg"></div>
   </div>
 
   <div class="toggle-row">
@@ -149,6 +120,11 @@
   <button id="btn-save">Save</button>
 
   <div id="feedback" class="feedback"></div>
+
+  <div id="diag" class="diag">
+    <strong>Diagnostics</strong>
+    <pre id="diag-log">(empty)</pre>
+  </div>
 
   <script src="popup.js"></script>
 </body>
