@@ -20,7 +20,7 @@ export class FakeWebSocket {
   });
   close = vi.fn((code?: number, reason?: string) => {
     this.readyState = 3;
-    setTimeout(() => this.onclose?.(new CloseEvent("close", { code: code ?? 1000, reason: reason ?? "" })), 0);
+    setTimeout(() => this.onclose?.({ code: code ?? 1000, reason: reason ?? "", type: "close", wasClean: true } as unknown as CloseEvent), 0);
   });
 
   constructor(url: string) {
@@ -36,7 +36,7 @@ export class FakeWebSocket {
 
   simulateClose(code = 1000, reason = ""): void {
     this.readyState = 3;
-    this.onclose?.(new CloseEvent("close", { code, reason }));
+    this.onclose?.({ code, reason, type: "close", wasClean: true } as unknown as CloseEvent);
   }
 
   simulateError(): void {

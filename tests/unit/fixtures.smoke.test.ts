@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
 import { FakeClock } from "../fixtures/fake_clock";
 import { FakeWebSocket, makeWsFactory } from "../fixtures/fake_websocket";
