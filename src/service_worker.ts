@@ -72,6 +72,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;   // async response
 });
 
+// ── Popup status port ──
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "popup-status") return;
+  ready.then(() => {
+    const off = container.bus.on("daemon:state", (e) => {
+      try {
+        port.postMessage({ type: "state", state: e.to, cause: e.cause });
+      } catch { /* port disconnected */ }
+    });
+    // Immediately push current state
+    port.postMessage({ type: "state", state: container.daemon.state });
+    port.onMessage.addListener((msg: { type: string }) => {
+      if (msg.type === "resume") container.daemon.resume();
+    });
+    port.onDisconnect.addListener(() => off());
+  }).catch(() => {});
+});
+
 // ── Safety nets ──
 
 (self as any).addEventListener("unhandledrejection", (e: any) => {
