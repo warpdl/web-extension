@@ -83,3 +83,21 @@ export interface OverlayOption {
   fileName?: string;
   group?: string;
 }
+
+// ── YouTube main/isolated bridge ──
+
+export type YtExtractError =
+  | "no_player_response"
+  | "no_formats"
+  | "base_js_fetch_failed"
+  | "signature_extract_failed"
+  | "n_extract_failed"
+  | "decode_exception"
+  | "unknown";
+
+export type YtBridgeMessage =
+  | { source: "warpdl-yt-content"; type: "request-formats" }
+  | { source: "warpdl-yt-content"; type: "ping" }
+  | { source: "warpdl-yt-main"; type: "ready" }
+  | { source: "warpdl-yt-main"; type: "formats-ready"; options: OverlayOption[]; videoId: string; title: string }
+  | { source: "warpdl-yt-main"; type: "formats-error"; reason: YtExtractError; videoId: string | null };
