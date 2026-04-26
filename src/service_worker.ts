@@ -1,6 +1,8 @@
 import { Container } from "./core/container";
+import { captureYtUrls, getCapturedForTab } from "./capture/yt_url_capture";
 
 const container = new Container();
+captureYtUrls();
 
 const ready = container.start().catch((err) => {
   console.error("[WarpDL] container start failed:", err);
@@ -65,7 +67,15 @@ chrome.downloads.onCreated.addListener((item) => {
 
 // ── Message handling ──
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // YouTube URL capture bridge — content script requests the list of
+  // already-captured googlevideo.com URLs for its tab on startup.
+  if ((message as { type?: string })?.type === "GET_YT_CAPTURED_URLS") {
+    const tabId = sender.tab?.id ?? -1;
+    sendResponse({ items: getCapturedForTab(tabId) });
+    return false;
+  }
+
   ready.then(() => container.router.handle(message as any)).then(sendResponse).catch((err) => {
     sendResponse({ error: String(err) });
   });

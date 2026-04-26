@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MessageRouter } from "../../../src/messaging/router";
 import type { IncomingMessage } from "../../../src/messaging/router";
 import { EventBus } from "../../../src/core/events";
@@ -15,6 +15,27 @@ function makeRouter(opts: { state?: string } = {}) {
   const router = new MessageRouter({ bus, log, daemon, video });
   return { router, daemon, video, bus };
 }
+
+let fetchSpy: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  fetchSpy = vi.fn();
+  (globalThis as any).fetch = fetchSpy;
+  // Settings load: stub chrome.storage.sync.get (promise-based) for loadSettings()
+  (globalThis as any).chrome = {
+    storage: {
+      sync: {
+        get: vi.fn(async () => ({ settings: { daemonUrl: "localhost:3850" } })),
+      },
+    },
+  };
+});
+
+afterEach(() => {
+  delete (globalThis as any).fetch;
+  delete (globalThis as any).chrome;
+  vi.restoreAllMocks();
+});
 
 describe("MessageRouter", () => {
   it("dispatches DOWNLOAD_VIDEO to video handler", async () => {
@@ -48,5 +69,47 @@ describe("MessageRouter", () => {
     video.handle = vi.fn(async () => { throw new Error("boom"); });
     const r = await router.handle({ type: "DOWNLOAD_VIDEO", url: "u" } as IncomingMessage) as { error: string };
     expect(r.error).toBe("handler_threw");
+  });
+
+  it("DOWNLOAD_YT_VIDEO calls daemon's youtube.download and returns ok", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      status: 200, ok: true,
+      json: async () => ({ jsonrpc: "2.0", id: 1, result: { gid: "g", muxed: true, fileName: "v.mp4" } }),
+    });
+    const { router } = makeRouter();
+    const r = await router.handle({
+      type: "DOWNLOAD_YT_VIDEO",
+      videoId: "abc",
+      videoFormatId: "137",
+      audioFormatId: "140",
+    } as IncomingMessage) as { ok: true; result: any };
+    expect(r.ok).toBe(true);
+    expect(r.result).toEqual({ gid: "g", muxed: true, fileName: "v.mp4" });
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.method).toBe("youtube.download");
+    expect(body.params).toEqual({
+      videoId: "abc",
+      videoFormatId: "137",
+      audioFormatId: "140",
+      fileName: undefined,
+    });
+  });
+
+  it("DOWNLOAD_YT_VIDEO surfaces daemon errors", async () => {
+    fetchSpy.mockResolvedValueOnce({
+      status: 200, ok: true,
+      json: async () => ({ jsonrpc: "2.0", id: 1, error: { code: -32105, message: "ffmpeg not found" } }),
+    });
+    const { router } = makeRouter();
+    const r = await router.handle({
+      type: "DOWNLOAD_YT_VIDEO",
+      videoId: "abc",
+      videoFormatId: "137",
+      audioFormatId: "140",
+    } as IncomingMessage) as { ok: false; error: string; code?: number };
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe(-32105);
+    expect(r.error).toContain("ffmpeg");
   });
 });

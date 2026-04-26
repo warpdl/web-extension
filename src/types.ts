@@ -31,45 +31,93 @@ export interface CapturedDownload {
 export interface ExtensionSettings {
   daemonUrl: string; // e.g. "localhost:3850"
   interceptDownloads: boolean;
+  // Optional Bearer token for the daemon's /jsonrpc endpoint. Empty = no
+  // authentication header sent. The /jsonrpc endpoint rejects requests
+  // when the daemon was started with a secret set.
+  daemonSecret?: string;
+}
+
+// ── Daemon resolve.url RPC ──
+
+export interface ResolvedFormat {
+  formatId: string;
+  url: string;
+  ext: string;
+  mimeType?: string;
+  quality?: string;
+  fileSize?: number;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  videoCodec?: string;
+  audioCodec?: string;
+  height?: number;
+  width?: number;
+  fps?: number;
+  audioBitrate?: number;
+}
+
+export interface ResolveUrlResult {
+  videoId?: string;
+  title: string;
+  author?: string;
+  duration?: number;
+  formats: ResolvedFormat[];
+}
+
+// ── Daemon youtube.download RPC ──
+
+export interface YouTubeDownloadParams {
+  videoId: string;
+  videoFormatId: string;
+  audioFormatId?: string;
+  dir?: string;
+  fileName?: string;
+  connections?: number;
+}
+
+export interface YouTubeDownloadResult {
+  gid: string;
+  muxed: boolean;
+  fileName: string;
 }
 
 // ── Internal messaging (content script / popup <-> service worker) ──
 
 export type ExtensionMessage =
   | { type: "DOWNLOAD_VIDEO"; url: string; fileName?: string; pageUrl?: string }
-  | { type: "GET_CONNECTION_STATUS" };
+  | { type: "DOWNLOAD_YT_VIDEO"; videoId: string; videoFormatId: string; audioFormatId?: string; fileName?: string }
+  | { type: "GET_CONNECTION_STATUS" }
+  | { type: "RESOLVE_YT_URL"; pageUrl: string };
+
+export type ResolveYtUrlResponse =
+  | { ok: true; result: ResolveUrlResult }
+  | { ok: false; error: string; code?: number };
+
+export type DownloadYtResponse =
+  | { ok: true; result: YouTubeDownloadResult }
+  | { ok: false; error: string; code?: number };
 
 export interface ConnectionStatusResponse {
   connected: boolean;
 }
 
-// ── YouTube types ──
+// ── Video overlay (detect module) ──
 
-export interface YouTubeFormat {
-  url?: string;
-  signatureCipher?: string;
-  mimeType: string;
-  qualityLabel?: string;
-  bitrate?: number;
-  contentLength?: string;
-  width?: number;
-  height?: number;
-  audioQuality?: string;
-}
-
-export interface YouTubeStreamingData {
-  formats?: YouTubeFormat[];
-  adaptiveFormats?: YouTubeFormat[];
-}
-
-export interface YouTubeVideoDetails {
-  videoId: string;
-  title: string;
-  lengthSeconds: string;
-  author: string;
-}
-
-export interface YouTubePlayerResponse {
-  videoDetails?: YouTubeVideoDetails;
-  streamingData?: YouTubeStreamingData;
+// OverlayOption represents one entry in the dropdown. Two flavours:
+//   - Direct URL (`url` non-empty): the click hands off to the existing
+//     CapturedDownload pipeline (or chrome.downloads fallback).
+//   - Daemon-mediated (`daemonRequest` set, `url` may be ""): the click
+//     sends a DOWNLOAD_YT_VIDEO message; daemon resolves URLs and downloads
+//     (with ffmpeg mux when audioFormatId is present).
+export interface OverlayOption {
+  label: string;
+  sublabel?: string;
+  url: string;
+  fileName?: string;
+  group?: string;
+  daemonRequest?: {
+    videoId: string;
+    videoFormatId: string;
+    audioFormatId?: string;
+  };
 }

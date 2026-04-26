@@ -14,9 +14,6 @@ export default defineConfig({
       exclude: [
         "src/service_worker.ts",
         "src/popup.ts",
-        "src/content_script.ts",
-        "src/youtube_content.ts",
-        "src/youtube_main_world.ts",
         "src/types.ts",
       ],
       thresholds: {
