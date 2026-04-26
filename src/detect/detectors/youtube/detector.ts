@@ -1,19 +1,25 @@
 import { BaseDetector } from "../../detector";
-import type { OverlayOption, ResolveUrlResult, ResolveYtUrlResponse } from "../../../types";
+import type { OverlayOption, ResolveUrlResult, ResolvedFormat, ResolveYtUrlResponse } from "../../../types";
 
 /**
  * YouTube detector.
  *
- * Architecture mirrors IDM: the extension is a thin shim. Instead of
- * reverse-engineering YouTube's base.js obfuscation in-extension, the
- * isolated-world content script asks the WarpDL daemon to resolve the
- * page URL via chrome.runtime.sendMessage({ type: "RESOLVE_YT_URL" }).
- * The background handler calls the daemon's resolve.url JSON-RPC which
- * shells out to yt-dlp server-side.
+ * Architecture mirrors IDM: the extension is a thin shim. The isolated-world
+ * content script asks the WarpDL daemon to resolve the page URL via
+ * chrome.runtime.sendMessage({ type: "RESOLVE_YT_URL" }). The background
+ * handler calls the daemon's resolve.url JSON-RPC, which uses
+ * github.com/kkdai/youtube/v2 to extract format metadata.
  *
- * Format options appear in the overlay dropdown as soon as the daemon
- * returns. If the daemon is unreachable or yt-dlp is missing, the
- * overlay shows a diagnostic error via console.warn.
+ * The overlay dropdown lists three groups, all using the same daemon-mediated
+ * download path:
+ *   - Combined: progressive itags (audio+video bundled). Single download.
+ *   - Video (HD): adaptive video-only itags paired with the best matching
+ *     audio leg. Daemon downloads both and runs ffmpeg to remux.
+ *   - Audio: adaptive audio-only itags. Single download, no mux.
+ *
+ * When the user clicks an option, the click handler emits DOWNLOAD_YT_VIDEO
+ * with the videoId + chosen itags; the daemon's youtube.download RPC handles
+ * the rest (URL signature decode, segmented download, mux).
  */
 export class YouTubeDetector extends BaseDetector {
   private cachedOptions: OverlayOption[] = [];
@@ -33,11 +39,9 @@ export class YouTubeDetector extends BaseDetector {
     this.detectorStopped = false;
     void this.kickOffResolve();
 
-    // Re-resolve when YouTube's SPA navigation completes.
     this.navListener = () => {
-      // Small debounce — YouTube fires navigate-finish before the new
-      // ytInitialPlayerResponse is visible in-page; waiting briefly
-      // lets the URL change settle before we send it to the daemon.
+      // YouTube fires navigate-finish before the new page state settles.
+      // Brief debounce avoids re-resolving the previous URL.
       setTimeout(() => {
         if (!this.detectorStopped) void this.kickOffResolve();
       }, 500);
@@ -90,46 +94,137 @@ export class YouTubeDetector extends BaseDetector {
   }
 
   private buildOptions(result: ResolveUrlResult): OverlayOption[] {
+    const videoId = result.videoId ?? "";
+    if (!videoId) {
+      console.warn("[WarpDL YT] resolve.url returned no videoId; download disabled");
+      return [];
+    }
+
     const title = result.title || "video";
     const options: OverlayOption[] = [];
 
-    // Three groups matching yt-dlp's stream shapes:
-    // - Combined: has both video + audio in one stream (legacy 18/22/etc.)
-    // - Video only: adaptive video-only streams (137, 299, ...)
-    // - Audio only: adaptive audio-only streams (140, 251, ...)
     const combined = result.formats
       .filter((f) => f.hasVideo && f.hasAudio)
       .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
+
     const videoOnly = result.formats
       .filter((f) => f.hasVideo && !f.hasAudio)
-      .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
+      .sort((a, b) => {
+        const dh = (b.height ?? 0) - (a.height ?? 0);
+        if (dh !== 0) return dh;
+        return (b.fps ?? 0) - (a.fps ?? 0);
+      });
+
     const audioOnly = result.formats
       .filter((f) => !f.hasVideo && f.hasAudio)
       .sort((a, b) => (b.audioBitrate ?? 0) - (a.audioBitrate ?? 0));
 
-    for (const f of combined) options.push(toOption(f, title, "Combined"));
-    for (const f of videoOnly) options.push(toOption(f, title, "Video only"));
-    for (const f of audioOnly) options.push(toOption(f, title, "Audio only"));
+    for (const f of combined) {
+      options.push({
+        label: formatLabel(f),
+        sublabel: codecSublabel(f),
+        url: "", // daemon will resolve at download time
+        fileName: `${sanitize(title)}.${f.ext}`,
+        group: "Combined",
+        daemonRequest: { videoId, videoFormatId: f.formatId },
+      });
+    }
+
+    // Pair each video-only format with a sensible audio companion. We pick
+    // the first audio leg whose container family matches (mp4/m4a or webm/
+    // opus), falling back to the highest-bitrate audio when no match.
+    for (const v of videoOnly) {
+      const audio = pickAudioCompanion(v, audioOnly);
+      if (!audio) continue;
+      options.push({
+        label: formatLabel(v) + " (HD)",
+        sublabel: muxSublabel(v, audio),
+        url: "",
+        fileName: `${sanitize(title)}.${pickContainerExt(v.ext, audio.ext)}`,
+        group: "Video (mux)",
+        daemonRequest: {
+          videoId,
+          videoFormatId: v.formatId,
+          audioFormatId: audio.formatId,
+        },
+      });
+    }
+
+    for (const f of audioOnly) {
+      options.push({
+        label: audioLabel(f),
+        sublabel: codecSublabel(f),
+        url: "",
+        fileName: `${sanitize(title)}.${f.ext}`,
+        group: "Audio",
+        daemonRequest: { videoId, videoFormatId: f.formatId },
+      });
+    }
 
     return options;
   }
 }
 
-function toOption(f: { formatId: string; url: string; ext: string; quality?: string; fileSize?: number; height?: number; videoCodec?: string; audioCodec?: string; audioBitrate?: number }, title: string, group: string): OverlayOption {
-  const labelParts: string[] = [];
-  if (f.quality) labelParts.push(f.quality);
-  else if (f.height) labelParts.push(`${f.height}p`);
-  else if (f.audioBitrate) labelParts.push(`${f.audioBitrate} kbps`);
+function formatLabel(f: ResolvedFormat): string {
+  const parts: string[] = [];
+  if (f.quality) parts.push(f.quality);
+  else if (f.height) parts.push(`${f.height}p`);
+  parts.push(f.ext);
+  if (f.fileSize) parts.push(formatBytes(f.fileSize));
+  return parts.join(" · ");
+}
 
-  labelParts.push(f.ext);
-  if (f.fileSize) labelParts.push(formatBytes(f.fileSize));
+function audioLabel(f: ResolvedFormat): string {
+  const parts: string[] = [];
+  if (f.audioBitrate) parts.push(`${f.audioBitrate} kbps`);
+  else if (f.quality) parts.push(f.quality);
+  parts.push(f.ext);
+  if (f.fileSize) parts.push(formatBytes(f.fileSize));
+  return parts.join(" · ");
+}
 
-  return {
-    label: labelParts.join(" · "),
-    url: f.url,
-    fileName: `${sanitize(title)}.${f.ext}`,
-    group,
-  };
+function codecSublabel(f: ResolvedFormat): string | undefined {
+  const codecs: string[] = [];
+  if (f.videoCodec) codecs.push(f.videoCodec);
+  if (f.audioCodec) codecs.push(f.audioCodec);
+  return codecs.length ? codecs.join(" + ") : undefined;
+}
+
+function muxSublabel(v: ResolvedFormat, a: ResolvedFormat): string {
+  const total = (v.fileSize ?? 0) + (a.fileSize ?? 0);
+  const codecs = [v.videoCodec, a.audioCodec].filter(Boolean).join(" + ");
+  const parts = [codecs, total ? formatBytes(total) : ""].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "video + audio mux";
+}
+
+// pickAudioCompanion picks an audio leg suitable for muxing with the given
+// video leg. Strategy:
+//   1) Prefer matching container family (mp4 video → m4a/mp4 audio,
+//      webm video → webm/opus audio).
+//   2) Among matches, prefer higher audio bitrate.
+//   3) If no match, fall back to the first (highest-bitrate) audio overall.
+function pickAudioCompanion(video: ResolvedFormat, audios: ResolvedFormat[]): ResolvedFormat | null {
+  if (audios.length === 0) return null;
+  const family = containerFamily(video.ext);
+  const matched = audios.filter((a) => containerFamily(a.ext) === family);
+  if (matched.length > 0) return matched[0];
+  return audios[0];
+}
+
+function containerFamily(ext: string): "mp4" | "webm" | "other" {
+  const e = ext.toLowerCase();
+  if (e === "mp4" || e === "m4a") return "mp4";
+  if (e === "webm" || e === "opus") return "webm";
+  return "other";
+}
+
+function pickContainerExt(videoExt: string, audioExt: string): string {
+  const f = containerFamily(videoExt);
+  if (f === "mp4") return "mp4";
+  if (f === "webm" && containerFamily(audioExt) === "webm") return "webm";
+  return "mkv";
+  // Mirrors daemon's pickContainer; the daemon picks the actual container
+  // server-side, this is just for the suggested filename.
 }
 
 function formatBytes(n: number): string {

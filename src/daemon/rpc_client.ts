@@ -7,7 +7,7 @@
  * same-origin fetch.
  */
 
-import type { ResolveUrlResult } from "../types";
+import type { ResolveUrlResult, YouTubeDownloadParams, YouTubeDownloadResult } from "../types";
 
 export interface RpcCallOptions {
   host: string;       // e.g. "localhost:3850"
@@ -82,7 +82,7 @@ async function rpcCall<T>(method: string, params: unknown, opts: RpcCallOptions)
 
 /**
  * Calls the daemon's resolve.url RPC to turn a video-page URL into a list of
- * downloadable format entries. The daemon shells out to yt-dlp server-side.
+ * downloadable format entries. The daemon uses github.com/kkdai/youtube/v2.
  *
  * Throws DaemonRpcError on any failure.
  */
@@ -91,4 +91,20 @@ export async function resolveUrl(
   opts: RpcCallOptions,
 ): Promise<ResolveUrlResult> {
   return rpcCall<ResolveUrlResult>("resolve.url", { url: pageUrl }, opts);
+}
+
+/**
+ * Calls the daemon's youtube.download RPC to start a download. The daemon
+ * resolves the actual stream URL(s) on the fly and runs ffmpeg when a
+ * separate audio leg is supplied (adaptive 1080p+ formats).
+ *
+ * Throws DaemonRpcError on any failure (including ffmpeg-not-installed which
+ * surfaces as code -32105, format_not_found as -32106, format_mismatch as
+ * -32107).
+ */
+export async function youtubeDownload(
+  params: YouTubeDownloadParams,
+  opts: RpcCallOptions,
+): Promise<YouTubeDownloadResult> {
+  return rpcCall<YouTubeDownloadResult>("youtube.download", params, opts);
 }

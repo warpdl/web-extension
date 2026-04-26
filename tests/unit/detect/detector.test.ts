@@ -95,7 +95,7 @@ describe("BaseDetector", () => {
     d.stop();
   });
 
-  it("onUserPick sends chrome.runtime.sendMessage with DOWNLOAD_VIDEO shape", () => {
+  it("onUserPick sends DOWNLOAD_VIDEO for direct-URL options", () => {
     const d = new TestDetector(true, [{ label: "x", url: "u" }]);
     const video = addVideo();
     d.start();
@@ -106,6 +106,27 @@ describe("BaseDetector", () => {
       url: "https://x/a",
       fileName: "a.mp4",
       pageUrl: window.location.href,
+    });
+    d.stop();
+  });
+
+  it("onUserPick sends DOWNLOAD_YT_VIDEO when option carries daemonRequest", () => {
+    const d = new TestDetector(true, [{ label: "x", url: "u" }]);
+    const video = addVideo();
+    d.start();
+    const opt: OverlayOption = {
+      label: "1080p",
+      url: "",
+      fileName: "x.mp4",
+      daemonRequest: { videoId: "abc", videoFormatId: "137", audioFormatId: "140" },
+    };
+    (d as any).onUserPick(video, opt);
+    expect((globalThis as any).chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: "DOWNLOAD_YT_VIDEO",
+      videoId: "abc",
+      videoFormatId: "137",
+      audioFormatId: "140",
+      fileName: "x.mp4",
     });
     d.stop();
   });

@@ -41,7 +41,17 @@ export abstract class BaseDetector implements Detector {
     h.setOptions(opts);
   }
 
-  protected onUserPick(video: HTMLVideoElement, option: OverlayOption): void {
+  protected onUserPick(_video: HTMLVideoElement, option: OverlayOption): void {
+    if (option.daemonRequest) {
+      chrome.runtime.sendMessage({
+        type: "DOWNLOAD_YT_VIDEO",
+        videoId: option.daemonRequest.videoId,
+        videoFormatId: option.daemonRequest.videoFormatId,
+        audioFormatId: option.daemonRequest.audioFormatId,
+        fileName: option.fileName,
+      });
+      return;
+    }
     chrome.runtime.sendMessage({
       type: "DOWNLOAD_VIDEO",
       url: option.url,

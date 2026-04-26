@@ -57,21 +57,44 @@ export interface ResolvedFormat {
 }
 
 export interface ResolveUrlResult {
+  videoId?: string;
   title: string;
   author?: string;
   duration?: number;
   formats: ResolvedFormat[];
 }
 
+// ── Daemon youtube.download RPC ──
+
+export interface YouTubeDownloadParams {
+  videoId: string;
+  videoFormatId: string;
+  audioFormatId?: string;
+  dir?: string;
+  fileName?: string;
+  connections?: number;
+}
+
+export interface YouTubeDownloadResult {
+  gid: string;
+  muxed: boolean;
+  fileName: string;
+}
+
 // ── Internal messaging (content script / popup <-> service worker) ──
 
 export type ExtensionMessage =
   | { type: "DOWNLOAD_VIDEO"; url: string; fileName?: string; pageUrl?: string }
+  | { type: "DOWNLOAD_YT_VIDEO"; videoId: string; videoFormatId: string; audioFormatId?: string; fileName?: string }
   | { type: "GET_CONNECTION_STATUS" }
   | { type: "RESOLVE_YT_URL"; pageUrl: string };
 
 export type ResolveYtUrlResponse =
   | { ok: true; result: ResolveUrlResult }
+  | { ok: false; error: string; code?: number };
+
+export type DownloadYtResponse =
+  | { ok: true; result: YouTubeDownloadResult }
   | { ok: false; error: string; code?: number };
 
 export interface ConnectionStatusResponse {
@@ -80,10 +103,21 @@ export interface ConnectionStatusResponse {
 
 // ── Video overlay (detect module) ──
 
+// OverlayOption represents one entry in the dropdown. Two flavours:
+//   - Direct URL (`url` non-empty): the click hands off to the existing
+//     CapturedDownload pipeline (or chrome.downloads fallback).
+//   - Daemon-mediated (`daemonRequest` set, `url` may be ""): the click
+//     sends a DOWNLOAD_YT_VIDEO message; daemon resolves URLs and downloads
+//     (with ffmpeg mux when audioFormatId is present).
 export interface OverlayOption {
   label: string;
   sublabel?: string;
   url: string;
   fileName?: string;
   group?: string;
+  daemonRequest?: {
+    videoId: string;
+    videoFormatId: string;
+    audioFormatId?: string;
+  };
 }

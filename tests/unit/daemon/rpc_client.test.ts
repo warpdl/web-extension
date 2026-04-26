@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { resolveUrl, DaemonRpcError } from "../../../src/daemon/rpc_client";
-import type { ResolveUrlResult } from "../../../src/types";
+import { resolveUrl, youtubeDownload, DaemonRpcError } from "../../../src/daemon/rpc_client";
+import type { ResolveUrlResult, YouTubeDownloadResult } from "../../../src/types";
 
 let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -135,5 +135,68 @@ describe("resolveUrl", () => {
       name: "DaemonRpcError",
       message: expect.stringContaining("timed out"),
     });
+  });
+});
+
+describe("youtubeDownload", () => {
+  it("POSTs youtube.download with the params", async () => {
+    const expected: YouTubeDownloadResult = { gid: "abc", muxed: false, fileName: "video.mp4" };
+    fetchSpy.mockResolvedValueOnce(jsonResponse(200, { jsonrpc: "2.0", id: 1, result: expected }));
+
+    const res = await youtubeDownload(
+      { videoId: "vid", videoFormatId: "22" },
+      { host: "localhost:3850" },
+    );
+    expect(res).toEqual(expected);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("http://localhost:3850/jsonrpc");
+    const body = JSON.parse(init.body as string);
+    expect(body.method).toBe("youtube.download");
+    expect(body.params).toEqual({ videoId: "vid", videoFormatId: "22" });
+  });
+
+  it("forwards adaptive params (audioFormatId, fileName)", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse(200, {
+        jsonrpc: "2.0", id: 1,
+        result: { gid: "x", muxed: true, fileName: "out.mp4" },
+      }),
+    );
+    await youtubeDownload(
+      { videoId: "v", videoFormatId: "137", audioFormatId: "140", fileName: "myclip" },
+      { host: "localhost:3850" },
+    );
+    const [, init] = fetchSpy.mock.calls[0];
+    const body = JSON.parse(init.body as string);
+    expect(body.params).toEqual({
+      videoId: "v",
+      videoFormatId: "137",
+      audioFormatId: "140",
+      fileName: "myclip",
+    });
+  });
+
+  it("propagates -32105 muxer_unavailable error", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse(200, {
+        jsonrpc: "2.0", id: 1,
+        error: { code: -32105, message: "ffmpeg not found on PATH" },
+      }),
+    );
+    await expect(
+      youtubeDownload({ videoId: "x", videoFormatId: "137", audioFormatId: "140" }, { host: "localhost:3850" }),
+    ).rejects.toMatchObject({ code: -32105, message: expect.stringContaining("ffmpeg") });
+  });
+
+  it("propagates -32106 format_not_found", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse(200, {
+        jsonrpc: "2.0", id: 1,
+        error: { code: -32106, message: "format id not found: 9999" },
+      }),
+    );
+    await expect(
+      youtubeDownload({ videoId: "x", videoFormatId: "9999" }, { host: "localhost:3850" }),
+    ).rejects.toMatchObject({ code: -32106 });
   });
 });
