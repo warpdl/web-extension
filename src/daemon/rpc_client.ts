@@ -1,17 +1,15 @@
 /**
  * Minimal JSON-RPC 2.0 HTTP client for the WarpDL daemon.
  *
- * POSTs to http://{host}/jsonrpc with an optional Bearer token. The daemon's
- * /jsonrpc endpoint is same-origin with the extension's already-configured
- * daemonUrl (e.g. localhost:3850), so no CORS preflight is required for
- * same-origin fetch.
+ * POSTs to http://{host}/jsonrpc. The daemon's /jsonrpc route is
+ * unauthenticated; it binds to 127.0.0.1 by default so only local
+ * processes (including the extension) can reach it.
  */
 
 import type { ResolveUrlResult, YouTubeDownloadParams, YouTubeDownloadResult } from "../types";
 
 export interface RpcCallOptions {
   host: string;       // e.g. "localhost:3850"
-  secret?: string;    // Bearer token; when set, sent as Authorization: Bearer <secret>
   timeoutMs?: number; // default 60s; the daemon itself applies a per-call cap
 }
 
@@ -39,12 +37,9 @@ async function rpcCall<T>(method: string, params: unknown, opts: RpcCallOptions)
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (opts.secret) headers["Authorization"] = `Bearer ${opts.secret}`;
-
     const res = await fetch(`http://${opts.host}/jsonrpc`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: nextId++,
@@ -54,9 +49,6 @@ async function rpcCall<T>(method: string, params: unknown, opts: RpcCallOptions)
       signal: controller.signal,
     });
 
-    if (res.status === 401) {
-      throw new DaemonRpcError("daemon rejected credentials (401)", 401);
-    }
     if (!res.ok) {
       throw new DaemonRpcError(`daemon HTTP ${res.status}`, res.status);
     }

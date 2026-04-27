@@ -67,10 +67,7 @@ export class MessageRouter {
   private async resolve(pageUrl: string): Promise<ResolveYtUrlResponse> {
     const settings = await loadSettings();
     try {
-      const result = await resolveUrl(pageUrl, {
-        host: settings.daemonUrl,
-        secret: settings.daemonSecret,
-      });
+      const result = await resolveUrl(pageUrl, { host: settings.daemonUrl });
       return { ok: true, result };
     } catch (e) {
       if (e instanceof DaemonRpcError) {
@@ -92,7 +89,7 @@ export class MessageRouter {
           audioFormatId: msg.audioFormatId,
           fileName: msg.fileName,
         },
-        { host: settings.daemonUrl, secret: settings.daemonSecret },
+        { host: settings.daemonUrl },
       );
       return { ok: true, result };
     } catch (e) {

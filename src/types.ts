@@ -31,10 +31,6 @@ export interface CapturedDownload {
 export interface ExtensionSettings {
   daemonUrl: string; // e.g. "localhost:3850"
   interceptDownloads: boolean;
-  // Optional Bearer token for the daemon's /jsonrpc endpoint. Empty = no
-  // authentication header sent. The /jsonrpc endpoint rejects requests
-  // when the daemon was started with a secret set.
-  daemonSecret?: string;
 }
 
 // ── Daemon resolve.url RPC ──

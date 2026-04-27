@@ -47,28 +47,6 @@ describe("resolveUrl", () => {
     expect(typeof body.id).toBe("number");
   });
 
-  it("includes Authorization header when secret is provided", async () => {
-    fetchSpy.mockResolvedValueOnce(
-      jsonResponse(200, { jsonrpc: "2.0", id: 1, result: { title: "", formats: [] } }),
-    );
-
-    await resolveUrl("https://x/y", { host: "localhost:3850", secret: "secret-123" });
-
-    const [, init] = fetchSpy.mock.calls[0];
-    expect(init.headers["Authorization"]).toBe("Bearer secret-123");
-  });
-
-  it("throws DaemonRpcError with code 401 on Unauthorized", async () => {
-    fetchSpy.mockResolvedValueOnce(jsonResponse(401, {}));
-
-    await expect(
-      resolveUrl("https://x/y", { host: "localhost:3850" }),
-    ).rejects.toMatchObject({
-      name: "DaemonRpcError",
-      code: 401,
-    });
-  });
-
   it("propagates JSON-RPC error with code", async () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse(200, {
